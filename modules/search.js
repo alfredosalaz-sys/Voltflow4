@@ -58,10 +58,13 @@ function resetSearchRuntimeFilters() {
   currentResultFilter = 'all';
   currentUXStatusFilter = 'all';
   currentMultiSectorFilter = 'all';
-  ['search-results-text', 'search-results-has'].forEach(id => {
+  ['search-results-text'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  document.querySelectorAll('.search-data-filter').forEach(el => { el.checked = false; });
+  const match = document.getElementById('search-data-match');
+  if (match) match.value = 'all';
   const sort = document.getElementById('search-results-sort');
   if (sort) sort.value = 'default';
 }
@@ -4814,15 +4817,19 @@ function buildCardHTML(c, i) {
 function renderSearchCards() {
   const grid = document.getElementById('search-cards-grid');
   if (!grid) return;
-  grid.innerHTML = tempSearchResults.map((c, i) => buildCardHTML(c, i)).join('');
+  const entries = getVisibleSearchResultEntries();
+  grid.innerHTML = entries.length
+    ? entries.map(({ c, i }) => buildCardHTML(c, i)).join('')
+    : `<div style="grid-column:1/-1;padding:1.25rem;border:1px solid var(--glass-border);border-radius:12px;background:rgba(255,255,255,.03);color:var(--text-muted);text-align:center">
+        No hay empresas que cumplan los filtros activos.
+      </div>`;
 }
 
 function renderSearchTable() {
   const tbody = document.getElementById('search-results-body');
   if (!tbody) return;
-  tbody.innerHTML = tempSearchResults
-  .map((c, i) => ({ c, i }))
-  .filter(({ c }) => searchResultPassesFilters(c))
+  const entries = getVisibleSearchResultEntries();
+  tbody.innerHTML = entries.length ? entries
   .map(({ c, i }) => {
     const bc = c.email ? 'badge-high' : 'badge-low';
     const socLinks = [
@@ -4859,7 +4866,7 @@ function renderSearchTable() {
         <button class="btn-action secondary" style="font-size:.72rem;padding:2px 5px" onclick="findSimilarLeads(${i})">🔍</button>
       </td>
     </tr>`;
-  }).join('');
+  }).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:1.25rem">No hay empresas que cumplan los filtros activos.</td></tr>`;
 }
 
 function switchResultView(view) {
@@ -4878,6 +4885,74 @@ function filterResults(type, btn) {
   applyAdvancedFilters();
 }
 
+const SEARCH_DATA_FILTER_LABELS = {
+  email: 'Email',
+  phone: 'Telefono',
+  address: 'Direccion',
+  website: 'Web',
+  social: 'Redes',
+  whatsapp: 'WhatsApp',
+  decision: 'Decisor',
+  description: 'Descripcion',
+  rating: 'Rating',
+  reviews: 'Resenas',
+  signals: 'Senales',
+  pain: 'Dolores web',
+  enriched: 'Enriquecido',
+  coordinates: 'Coordenadas',
+  not_imported: 'No esta en Leads',
+  full_contact: 'Direccion + email + telefono',
+};
+
+function getSelectedSearchDataFilters() {
+  return [...document.querySelectorAll('.search-data-filter:checked')].map(el => el.value);
+}
+
+function resultAlreadyInLeads(c) {
+  return leads.find(l => !l.archived && isSameBusiness({ ...c, company: c.name }, l));
+}
+
+function resultHasData(c, filter) {
+  if (!c) return false;
+  if (filter === 'email') return !!c.email;
+  if (filter === 'phone') return !!c.phone;
+  if (filter === 'address') return !!c.address;
+  if (filter === 'website') return !!c.website;
+  if (filter === 'social') return !!(c.instagram || c.facebook || c.linkedin || c.twitter || c.youtube);
+  if (filter === 'whatsapp') return !!c.whatsapp;
+  if (filter === 'decision') return !!c.decision_maker;
+  if (filter === 'description') return !!c.description;
+  if (filter === 'rating') return Number(c.rating || 0) > 0;
+  if (filter === 'reviews') return Number(c.ratingCount || 0) > 0;
+  if (filter === 'signals') return !!(c.signals && c.signals.length > 0);
+  if (filter === 'pain') return !!(c.scrapeSignals && c.scrapeSignals.length > 0);
+  if (filter === 'enriched') return !!(c.enriched || c.email || c.description || c.decision_maker || (c.enrichSource || []).length);
+  if (filter === 'coordinates') return c.lat != null && c.lng != null;
+  if (filter === 'not_imported') return !resultAlreadyInLeads(c);
+  if (filter === 'full_contact') return !!(c.address && c.email && c.phone);
+  return true;
+}
+
+function getResultCompletenessScore(c) {
+  const weighted = [
+    ['email', 18], ['phone', 14], ['address', 10], ['website', 10],
+    ['decision', 10], ['social', 8], ['whatsapp', 8], ['description', 6],
+    ['rating', 5], ['reviews', 5], ['signals', 4], ['pain', 4],
+    ['coordinates', 3], ['enriched', 5],
+  ];
+  return weighted.reduce((sum, [key, points]) => sum + (resultHasData(c, key) ? points : 0), 0);
+}
+
+function searchResultTextMatches(c, text) {
+  if (!text) return true;
+  const hay = [
+    c.name, c.email, c.website, c.phone, c.address, c.decision_maker,
+    c.sourceSector, c.segment, c.description, c.whatsapp,
+    ...(c.signals || []), ...(c.scrapeSignals || []).map(s => s.label || s.key || ''),
+  ].join(' ').toLowerCase();
+  return hay.includes(text);
+}
+
 function searchResultPassesFilters(c) {
   if (!c) return false;
   const type       = currentResultFilter || 'all';
@@ -4887,7 +4962,8 @@ function searchResultPassesFilters(c) {
   const hasWeb     = document.getElementById('filter-has-web')?.checked || false;
   const noLeads    = document.getElementById('filter-no-leads')?.checked || false;
   const srText     = (document.getElementById('search-results-text')?.value || '').toLowerCase();
-  const srHas      = document.getElementById('search-results-has')?.value || '';
+  const dataFilters = getSelectedSearchDataFilters();
+  const dataMatch = document.getElementById('search-data-match')?.value || 'all';
 
   let show = true;
   if (type === 'email')      show = !!c.email;
@@ -4903,19 +4979,11 @@ function searchResultPassesFilters(c) {
   if (show && reviewsMin > 0) show = !!(c.ratingCount && c.ratingCount >= reviewsMin);
   if (show && distMax < 50 && c.distKm != null) show = c.distKm <= distMax;
   if (show && hasWeb) show = !!c.website;
-  if (show && noLeads) show = !leads.find(l => !l.archived && isSameBusiness({ ...c, company: c.name }, l));
-  if (show && srText) {
-    const hay = [c.name, c.email, c.website, c.phone, c.address, c.decision_maker, ...(c.signals || [])].join(' ').toLowerCase();
-    show = hay.includes(srText);
-  }
-  if (show && srHas) {
-    if (srHas === 'email' && !c.email) show = false;
-    if (srHas === 'phone' && !c.phone) show = false;
-    if (srHas === 'web' && !c.website) show = false;
-    if (srHas === 'social' && !(c.instagram||c.facebook||c.linkedin)) show = false;
-    if (srHas === 'decision' && !c.decision_maker) show = false;
-    if (srHas === 'whatsapp' && !c.whatsapp) show = false;
-    if (srHas === 'pain' && !(c.scrapeSignals && c.scrapeSignals.length)) show = false;
+  if (show && noLeads) show = !resultAlreadyInLeads(c);
+  if (show && !searchResultTextMatches(c, srText)) show = false;
+  if (show && dataFilters.length) {
+    const matches = dataFilters.map(filter => resultHasData(c, filter));
+    show = dataMatch === 'any' ? matches.some(Boolean) : matches.every(Boolean);
   }
   if (show && currentUXStatusFilter && currentUXStatusFilter !== 'all') show = getLeadUXStatus(c).key === currentUXStatusFilter;
   if (show && currentMultiSectorFilter && currentMultiSectorFilter !== 'all') {
@@ -4924,105 +4992,127 @@ function searchResultPassesFilters(c) {
   return show;
 }
 
-function applyAdvancedFilters() {
-  const type       = currentResultFilter || 'all';
-  const ratingMin  = parseFloat(document.getElementById('filter-rating-min')?.value || 0);
-  const reviewsMin = parseInt(document.getElementById('filter-reviews-min')?.value || 0);
-  const distMax    = parseFloat(document.getElementById('filter-dist-max')?.value || 50);
-  const hasWeb     = document.getElementById('filter-has-web')?.checked || false;
-  const noLeads    = document.getElementById('filter-no-leads')?.checked || false;
-  const srText     = (document.getElementById('search-results-text')?.value || '').toLowerCase();
-  const srHas      = document.getElementById('search-results-has')?.value || '';
-  const srSort     = document.getElementById('search-results-sort')?.value || 'default';
-
-  const cards = document.querySelectorAll('.search-card');
-  let visibleCount = 0;
-
-  cards.forEach((card, i) => {
-    const idx = parseInt(card.dataset.index || i, 10);
-    const c = tempSearchResults[idx];
-    if (!c) return;
-    let show = true;
-
-    // Filtros de tipo (quick filters)
-    if (type === 'email')      show = !!c.email;
-    if (type === 'phone')      show = !!c.phone;
-    if (type === 'social')     show = !!(c.instagram || c.facebook || c.linkedin);
-    if (type === 'noemail')    show = !c.email;
-    if (type === 'decision')   show = !!c.decision_maker;
-    if (type === 'signals')    show = !!(c.signals && c.signals.length > 0);
-    if (type === 'pain')       show = !!(c.scrapeSignals && c.scrapeSignals.length > 0);
-    if (type === 'new_domain') show = !!(c.domainAge !== undefined && c.domainAge <= 2);
-    if (type === 'verified')   show = !!(c.legalStatus && /active|activa/i.test(c.legalStatus));
-
-    // Filtros avanzados
-    if (show && ratingMin > 0)  show = !!(c.rating && c.rating >= ratingMin);
-    if (show && reviewsMin > 0) show = !!(c.ratingCount && c.ratingCount >= reviewsMin);
-    if (show && distMax < 50 && c.distKm != null) show = c.distKm <= distMax;
-    if (show && hasWeb) show = !!c.website;
-    if (show && noLeads) {
-      show = !leads.find(l => !l.archived && isSameBusiness({ ...c, company: c.name }, l));
-    }
-    // Text search filter
-    if (show && srText) {
-      const hay = [c.name, c.email, c.website, c.phone, c.address,
-        c.decision_maker, ...(c.signals||[])].join(' ').toLowerCase();
-      if (!hay.includes(srText)) show = false;
-    }
-    // Has filter
-    if (show && srHas) {
-      if (srHas === 'email' && !c.email) show = false;
-      if (srHas === 'phone' && !c.phone) show = false;
-      if (srHas === 'web' && !c.website) show = false;
-      if (srHas === 'social' && !(c.instagram||c.facebook||c.linkedin)) show = false;
-      if (srHas === 'decision' && !c.decision_maker) show = false;
-      if (srHas === 'whatsapp' && !c.whatsapp) show = false;
-      if (srHas === 'pain' && !(c.scrapeSignals && c.scrapeSignals.length)) show = false;
-    }
-    if (show && currentUXStatusFilter && currentUXStatusFilter !== 'all') {
-      show = getLeadUXStatus(c).key === currentUXStatusFilter;
-    }
-    if (show && currentMultiSectorFilter && currentMultiSectorFilter !== 'all') {
-      show = (c.matchedSectors || [c.sourceSector || c.segment]).includes(currentMultiSectorFilter);
-    }
-
-    card.style.display = show ? 'block' : 'none';
-    if (show) visibleCount++;
-  });
-
-  // Sort cards if needed
-  if (srSort !== 'default' && tempSearchResults.length > 0) {
-    const grid = document.getElementById('search-cards-grid');
-    if (grid) {
-      const cardEls = Array.from(grid.querySelectorAll('.search-card'));
-      cardEls.sort((a, b) => {
-        const ai = parseInt(a.dataset.index || 0);
-        const bi = parseInt(b.dataset.index || 0);
-        const ca = tempSearchResults[ai] || {};
-        const cb = tempSearchResults[bi] || {};
-        if (srSort === 'rating_desc')   return (cb.rating||0) - (ca.rating||0);
-        if (srSort === 'reviews_desc')  return (cb.ratingCount||0) - (ca.ratingCount||0);
-        if (srSort === 'name_asc')      return (ca.name||'').localeCompare(cb.name||'');
-        if (srSort === 'distance_asc')  return (ca.distKm||999) - (cb.distKm||999);
-        return 0;
-      });
-      cardEls.forEach(c => grid.appendChild(c));
-    }
+function compareSearchResultEntries(a, b, srSort) {
+  const ca = a.c || {};
+  const cb = b.c || {};
+  const fallback = a.i - b.i;
+  if (srSort === 'data_complete_desc') return (getResultCompletenessScore(cb) - getResultCompletenessScore(ca)) || fallback;
+  if (srSort === 'opportunity_desc') return ((cb.opportunityScore || 0) - (ca.opportunityScore || 0)) || fallback;
+  if (srSort === 'contact_quality_desc') return ((cb.contactQualityScore || 0) - (ca.contactQualityScore || 0)) || fallback;
+  if (srSort === 'email_first') return (Number(!!cb.email) - Number(!!ca.email)) || fallback;
+  if (srSort === 'phone_first') return (Number(!!cb.phone) - Number(!!ca.phone)) || fallback;
+  if (srSort === 'website_first') return (Number(!!cb.website) - Number(!!ca.website)) || fallback;
+  if (srSort === 'rating_desc') return (Number(cb.rating || 0) - Number(ca.rating || 0)) || fallback;
+  if (srSort === 'reviews_desc') return (Number(cb.ratingCount || 0) - Number(ca.ratingCount || 0)) || fallback;
+  if (srSort === 'name_asc') return String(ca.name || '').localeCompare(String(cb.name || '')) || fallback;
+  if (srSort === 'sector_asc') {
+    const sa = getSegmentLabel(ca.sourceSector || ca.segment || '');
+    const sb = getSegmentLabel(cb.sourceSector || cb.segment || '');
+    return sa.localeCompare(sb) || String(ca.name || '').localeCompare(String(cb.name || '')) || fallback;
   }
+  if (srSort === 'distance_asc') return (Number(ca.distKm ?? 999999) - Number(cb.distKm ?? 999999)) || fallback;
+  return fallback;
+}
 
-  // Update count
+function getVisibleSearchResultEntries() {
+  const srSort = document.getElementById('search-results-sort')?.value || 'default';
+  decorateAllOpportunities();
+  const entries = tempSearchResults
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => searchResultPassesFilters(c));
+  return entries.sort((a, b) => compareSearchResultEntries(a, b, srSort));
+}
+
+function applyAdvancedFilters() {
+  renderSearchCards();
+  const tableView = document.getElementById('results-table-view');
+  if (tableView && tableView.style.display !== 'none') renderSearchTable();
+  const visibleCount = getVisibleSearchResultEntries().length;
   const cntEl = document.getElementById('search-results-count');
-  if (cntEl) cntEl.textContent = `${visibleCount} resultados`;
+  if (cntEl) cntEl.textContent = `${visibleCount} de ${tempSearchResults.length} resultados`;
+  updateSearchFilterChips();
+}
 
-  // Actualizar tabla también si está visible
-  scheduleSearchTableRender();
+function removeSearchDataFilter(filter) {
+  const el = document.querySelector(`.search-data-filter[value="${filter}"]`);
+  if (el) el.checked = false;
+  applyAdvancedFilters();
+}
+
+function setSearchDataFilterPreset(filters, match = 'all') {
+  const wanted = new Set(Array.isArray(filters) ? filters : []);
+  document.querySelectorAll('.search-data-filter').forEach(el => { el.checked = wanted.has(el.value); });
+  const matchEl = document.getElementById('search-data-match');
+  if (matchEl) matchEl.value = match;
+  applyAdvancedFilters();
+}
+
+function updateSearchFilterChips() {
+  const chipsEl = document.getElementById('search-sf-chips');
+  const badgeEl = document.getElementById('search-sf-badge');
+  const moreBtn = document.getElementById('search-more-btn');
+  if (!chipsEl) return;
+
+  const chips = [];
+  const text = document.getElementById('search-results-text')?.value?.trim();
+  const sort = document.getElementById('search-results-sort')?.value || 'default';
+  const dataFilters = getSelectedSearchDataFilters();
+  const dataMatch = document.getElementById('search-data-match')?.value || 'all';
+  const ratingMin = parseFloat(document.getElementById('filter-rating-min')?.value || 0);
+  const reviewsMin = parseInt(document.getElementById('filter-reviews-min')?.value || 0);
+  const distMax = parseFloat(document.getElementById('filter-dist-max')?.value || 50);
+  const hasWeb = document.getElementById('filter-has-web')?.checked || false;
+  const noLeads = document.getElementById('filter-no-leads')?.checked || false;
+
+  const quickLabels = {
+    email: 'Con email', phone: 'Con telefono', social: 'Con redes', noemail: 'Sin email',
+    decision: 'Con decisor', signals: 'Con senales', pain: 'Dolores web',
+    new_domain: 'Dominio reciente', verified: 'Verificada',
+  };
+  const sortLabels = {
+    data_complete_desc: 'Mas completos', opportunity_desc: 'Mayor oportunidad',
+    contact_quality_desc: 'Mejor contacto', email_first: 'Email primero',
+    phone_first: 'Telefono primero', website_first: 'Web primero',
+    rating_desc: 'Mayor rating', reviews_desc: 'Mas resenas',
+    name_asc: 'A-Z nombre', distance_asc: 'Mas cercano', sector_asc: 'Sector A-Z',
+  };
+
+  if (text) chips.push({ label: `Texto: "${text.slice(0, 24)}"`, clear: "document.getElementById('search-results-text').value='';applyAdvancedFilters()" });
+  if (currentResultFilter && currentResultFilter !== 'all') chips.push({ label: quickLabels[currentResultFilter] || currentResultFilter, clear: "filterResults('all', document.querySelector('.rfilt'))" });
+  if (dataFilters.length) {
+    const prefix = dataMatch === 'any' ? 'Alguno' : 'Todos';
+    dataFilters.forEach(filter => chips.push({
+      label: `${prefix}: ${SEARCH_DATA_FILTER_LABELS[filter] || filter}`,
+      clear: `removeSearchDataFilter('${filter}')`,
+    }));
+  }
+  if (sort !== 'default') chips.push({ label: `Orden: ${sortLabels[sort] || sort}`, clear: "document.getElementById('search-results-sort').value='default';applyAdvancedFilters()" });
+  if (ratingMin > 0) chips.push({ label: `Rating >= ${ratingMin}`, clear: "document.getElementById('filter-rating-min').value=0;document.getElementById('filter-rating-val').textContent='0';applyAdvancedFilters()" });
+  if (reviewsMin > 0) chips.push({ label: `Resenas >= ${reviewsMin}`, clear: "document.getElementById('filter-reviews-min').value=0;applyAdvancedFilters()" });
+  if (distMax < 50) chips.push({ label: `Distancia <= ${distMax}km`, clear: "document.getElementById('filter-dist-max').value=50;document.getElementById('filter-dist-val').textContent='50km';applyAdvancedFilters()" });
+  if (hasWeb) chips.push({ label: 'Solo con web', clear: "document.getElementById('filter-has-web').checked=false;applyAdvancedFilters()" });
+  if (noLeads) chips.push({ label: 'No esta en Leads', clear: "document.getElementById('filter-no-leads').checked=false;applyAdvancedFilters()" });
+  if (currentMultiSectorFilter && currentMultiSectorFilter !== 'all') chips.push({ label: `Sector: ${getSegmentLabel(currentMultiSectorFilter)}`, clear: "filterMultiSectorResults('all')" });
+
+  chipsEl.innerHTML = chips.map(c => `
+    <span class="sf-chip">
+      ${c.label}
+      <button onclick="${c.clear}" title="Quitar filtro">×</button>
+    </span>`).join('');
+
+  const count = chips.length;
+  if (badgeEl) { badgeEl.textContent = count; badgeEl.style.display = count ? 'inline-block' : 'none'; }
+  if (moreBtn) moreBtn.classList.toggle('has-active', count > 0);
 }
 
 function resetSearchResultsFilters() {
-  ['search-results-text','search-results-sort','search-results-has'].forEach(id => {
+  ['search-results-text','search-results-sort'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = id === 'search-results-sort' ? 'default' : '';
   });
+  document.querySelectorAll('.search-data-filter').forEach(el => { el.checked = false; });
+  const matchEl = document.getElementById('search-data-match');
+  if (matchEl) matchEl.value = 'all';
   applyAdvancedFilters();
 }
 
@@ -5042,6 +5132,9 @@ function resetAdvancedFilters() {
   if (webEl) webEl.checked = false;
   if (leadsEl) leadsEl.checked = false;
   if (valEl) valEl.textContent = '0';
+  document.querySelectorAll('.search-data-filter').forEach(el => { el.checked = false; });
+  const matchEl = document.getElementById('search-data-match');
+  if (matchEl) matchEl.value = 'all';
   filterResults('all', document.querySelector('.rfilt'));
 }
 
@@ -5330,6 +5423,8 @@ function quickImportOne(idx) {
 
 function exportSearchCSV() {
   if (!tempSearchResults.length) { showToast('No hay resultados que exportar'); return; }
+  const visibleEntries = getVisibleSearchResultEntries();
+  if (!visibleEntries.length) { showToast('No hay resultados visibles para exportar. Revisa los filtros.'); return; }
 
   const headers = [
     'Empresa','Dirección','Rating','Reseñas','Email','Teléfono','Web',
@@ -5340,7 +5435,7 @@ function exportSearchCSV() {
     'Calidad contacto','Score contacto','Tipo email','Query origen','Plan busqueda','Por que aparece'
   ];
 
-  const rows = tempSearchResults.map(c => {
+  const rows = visibleEntries.map(({ c }) => {
     decorateOpportunity(c);
     return [
     c.name || '',
@@ -5389,7 +5484,7 @@ function exportSearchCSV() {
   a.download = `voltflow_${document.getElementById('plan-segment').value}_${document.getElementById('plan-location').value}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast(`CSV exportado: ${tempSearchResults.length} empresas con ${headers.length} columnas ✓`);
+  showToast(`CSV exportado: ${visibleEntries.length} empresas visibles con ${headers.length} columnas ✓`);
 }
 
 

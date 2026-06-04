@@ -496,7 +496,7 @@
         <option value="manual">Manual</option>
       </select>
       <select id="filter-score-min" onchange="renderLeads(); sfUpdateChips('leads')">
-        <option value="">Score m²n.</option>
+        <option value="">Score min.</option>
         <option value="25">Score 25+</option>
         <option value="50">Score 50+</option>
         <option value="70">Score 70+</option>
@@ -904,14 +904,21 @@
           <div class="sf-bar" style="margin-top:.75rem">
             <div class="sf-search-wrap">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <input type="text" id="search-results-text" placeholder="Filtrar por nombre, email, web..." oninput="applyAdvancedFilters(); sfUpdateChips('search')">
+              <input type="text" id="search-results-text" placeholder="Filtrar por nombre, email, web, telefono, direccion..." oninput="applyAdvancedFilters(); updateSearchFilterChips()">
             </div>
             <div class="sf-sort-wrap">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
               <select id="search-results-sort" onchange="applyAdvancedFilters()">
                 <option value="default">Orden original</option>
+                <option value="data_complete_desc">Mas completos</option>
+                <option value="opportunity_desc">Mayor oportunidad</option>
+                <option value="contact_quality_desc">Mejor contacto</option>
+                <option value="email_first">Email primero</option>
+                <option value="phone_first">Telefono primero</option>
+                <option value="website_first">Web primero</option>
                 <option value="rating_desc">Mayor rating</option>
                 <option value="reviews_desc">Mas resenas</option>
+                <option value="sector_asc">Sector A-Z</option>
                 <option value="name_asc">A-Z Nombre</option>
                 <option value="distance_asc">Mas cercano</option>
               </select>
@@ -924,16 +931,43 @@
             <span class="sf-count" id="search-results-count"></span>
           </div>
           <div class="sf-panel" id="search-sf-panel">
-            <select id="search-results-has" onchange="applyAdvancedFilters(); sfUpdateChips('search')">
-              <option value="">Cualquier dato</option>
-              <option value="email">Con email</option>
-              <option value="phone">Con teléfono</option>
-              <option value="web">Con web</option>
-              <option value="social">Con redes</option>
-              <option value="decision">Con decisor</option>
-              <option value="whatsapp">Con WhatsApp</option>
-              <option value="pain">Aviso: Con dolores web</option>
-            </select>
+            <div class="search-data-filter-card">
+              <div class="search-data-filter-head">
+                <div>
+                  <strong>Datos que debe tener</strong>
+                  <span>Combina varios campos sin alterar el scraping original.</span>
+                </div>
+                <select id="search-data-match" onchange="applyAdvancedFilters(); updateSearchFilterChips()">
+                  <option value="all">Debe tener todos</option>
+                  <option value="any">Puede tener cualquiera</option>
+                </select>
+              </div>
+              <div class="search-data-filter-grid">
+                <label><input type="checkbox" class="search-data-filter" value="email" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Email</label>
+                <label><input type="checkbox" class="search-data-filter" value="phone" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Telefono</label>
+                <label><input type="checkbox" class="search-data-filter" value="address" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Direccion</label>
+                <label><input type="checkbox" class="search-data-filter" value="website" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Web</label>
+                <label><input type="checkbox" class="search-data-filter" value="social" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Redes</label>
+                <label><input type="checkbox" class="search-data-filter" value="whatsapp" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> WhatsApp</label>
+                <label><input type="checkbox" class="search-data-filter" value="decision" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Decisor</label>
+                <label><input type="checkbox" class="search-data-filter" value="description" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Descripcion</label>
+                <label><input type="checkbox" class="search-data-filter" value="rating" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Rating</label>
+                <label><input type="checkbox" class="search-data-filter" value="reviews" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Resenas</label>
+                <label><input type="checkbox" class="search-data-filter" value="signals" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Senales</label>
+                <label><input type="checkbox" class="search-data-filter" value="pain" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Dolores web</label>
+                <label><input type="checkbox" class="search-data-filter" value="enriched" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Enriquecido</label>
+                <label><input type="checkbox" class="search-data-filter" value="coordinates" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Coordenadas</label>
+                <label><input type="checkbox" class="search-data-filter" value="not_imported" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> No esta en Leads</label>
+                <label><input type="checkbox" class="search-data-filter" value="full_contact" onchange="applyAdvancedFilters(); updateSearchFilterChips()"> Direccion + email + telefono</label>
+              </div>
+              <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+                <button class="rfilt" onclick="setSearchDataFilterPreset(['full_contact'])">Contacto completo</button>
+                <button class="rfilt" onclick="setSearchDataFilterPreset(['email','phone'])">Email + telefono</button>
+                <button class="rfilt" onclick="setSearchDataFilterPreset(['email','website'])">Email + web</button>
+                <button class="rfilt" onclick="setSearchDataFilterPreset(['address','email','phone'])">Direccion + email + telefono</button>
+                <button class="rfilt" onclick="setSearchDataFilterPreset(['not_imported'])">No importados</button>
+              </div>
+            </div>
             <button onclick="resetSearchResultsFilters()" class="sf-more-btn" style="color:var(--danger);border-color:rgba(239,68,68,.3)"> Limpiar</button>
           </div>
           <div class="sf-chips" id="search-sf-chips"></div>
@@ -954,16 +988,16 @@
             <button class="rfilt" onclick="filterResults('verified',this)">OK Verificada</button>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center">
-            <span style="font-size:.72rem;color:var(--text-muted)">Rating m²n:</span>
+            <span style="font-size:.72rem;color:var(--text-muted)">Rating min:</span>
             <input type="range" min="0" max="5" step="0.5" value="0" id="filter-rating-min"
               oninput="document.getElementById('filter-rating-val').textContent=this.value;applyAdvancedFilters()"
               style="width:80px;accent-color:var(--primary)">
             <span id="filter-rating-val" style="font-size:.72rem;color:var(--text)">0</span>
-            <span style="font-size:.72rem;color:var(--text-muted);margin-left:.5rem">Reseñas m²n:</span>
+            <span style="font-size:.72rem;color:var(--text-muted);margin-left:.5rem">Reseñas min:</span>
             <input type="number" min="0" max="9999" value="0" id="filter-reviews-min"
               oninput="applyAdvancedFilters()"
               style="width:55px;background:var(--glass);border:1px solid var(--glass-border);border-radius:6px;padding:2px 6px;color:var(--text);font-size:.72rem">
-            <span style="font-size:.72rem;color:var(--text-muted);margin-left:.5rem">Dist. m²x:</span>
+            <span style="font-size:.72rem;color:var(--text-muted);margin-left:.5rem">Dist. max:</span>
             <input type="range" min="1" max="50" step="1" value="50" id="filter-dist-max"
               oninput="document.getElementById('filter-dist-val').textContent=this.value+'km';applyAdvancedFilters()"
               style="width:70px;accent-color:var(--primary)">
@@ -1522,7 +1556,7 @@ Y cruzará los remitentes con tus leads para actualizar el CRM."
         Recibe un email cuando el agente detecte leads urgentes, seguimientos vencidos o acciones importantes.
       </p>
 
-      <!-- Selector de m²todo -->
+      <!-- Selector de metodo -->
       <div style="display:flex;gap:.5rem;margin-bottom:1.25rem;flex-wrap:wrap">
         <button id="method-btn-emailjs" onclick="selectEmailMethod('emailjs')"
           style="flex:1;min-width:120px;padding:.6rem .75rem;border-radius:10px;border:2px solid var(--primary);background:rgba(10,132,255,.1);color:var(--primary);font-weight:700;font-size:.8rem;cursor:pointer;transition:all .15s">
@@ -1603,7 +1637,7 @@ Y cruzará los remitentes con tus leads para actualizar el CRM."
       <!-- --  M0TODO GMAIL OAUTH (colapsado por defecto) --  -->
       <div id="gmail-oauth-setup" style="display:none">
         <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:.6rem .75rem;margin-bottom:.75rem;font-size:.78rem;color:var(--warning)">
-          Aviso: Este m²todo requiere crear un proyecto en Google Cloud Console. Usa EmailJS si quieres algo m²s rápido.
+          Aviso: Este metodo requiere crear un proyecto en Google Cloud Console. Usa EmailJS si quieres algo mas rapido.
         </div>
         <div style="display:grid;gap:.65rem;margin-bottom:.75rem">
           <div class="input-group">

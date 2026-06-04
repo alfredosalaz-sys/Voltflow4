@@ -708,9 +708,7 @@ const SF_CONFIG = {
     { id:'campaigns-filter-seg',    label: v => v ? '🏢 '+v : null },
     { id:'campaigns-filter-status', label: v => ({ active:'✅ Con envíos', empty:'❌ Sin envíos', complete:'💯 Completadas' })[v] || null },
   ],
-  search: [
-    { id:'search-results-has', label: v => ({ email:'✉️ Con email', phone:'📞 Con tel.', web:'🌐 Con web', social:'📱 Con redes', decision:'👤 Con decisor', whatsapp:'💬 Con WhatsApp' })[v] || null },
-  ],
+  search: [],
 };
 
 // Render functions per section
@@ -731,6 +729,10 @@ function sfTogglePanel(section) {
 }
 
 function sfUpdateChips(section) {
+  if (section === 'search' && typeof updateSearchFilterChips === 'function') {
+    updateSearchFilterChips();
+    return;
+  }
   const config  = SF_CONFIG[section];
   const chipsEl = document.getElementById(section + '-sf-chips');
   const badgeEl = document.getElementById(section + '-sf-badge');

@@ -81,7 +81,8 @@
     'toggleAgentMode', 'runAutoMaintenance', 'sendManualAlert',
     'chatShowDailyBriefing', 'stopChatVoice',
     'saveGmailConfig', 'testGmailAlert', 'toggleGmailAlerts',
-    'githubPush', 'githubPull', 'toggleGithubAuto'
+    'githubPush', 'githubPull', 'toggleGithubAuto',
+    'sfTogglePanel', 'sfUpdateChips', 'sfRemoveFilter'
   ].forEach(name => installLazyFunction(name, 'chat', markChatLoading));
 
   [

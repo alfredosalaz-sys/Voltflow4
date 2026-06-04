@@ -1,0 +1,149 @@
+﻿{
+  "version": "2.8.2",
+  "build": "2026.06.04.0320",
+  "date": "2026-06-04",
+  "changelog": [
+    {
+      "title": "Fase 3 de arranque ligero",
+      "desc": "Email IA, Inbox/Mapa/Escaneo y Smart Import pasan a carga bajo demanda. La pantalla inicial carga menos codigo sin perder botones ni flujo de trabajo."
+    },
+    {
+      "title": "Fase 1 de optimizacion estructural",
+      "desc": "El arranque renderiza menos vistas ocultas, los observers globales quedan acotados y las busquedas guardadas almacenan resultados compactos para mejorar fluidez sin perder leads, API keys ni datos locales."
+    },
+    {
+      "title": "Correccion de caracteres visibles",
+      "desc": "Se limpian comillas curvas, espacios especiales y separadores corruptos que algunos navegadores mostraban como caracteres raros en filtros, selectores y controles."
+    },
+    {
+      "title": "Optimizacion profesional de carga y scraping",
+      "desc": "El HTML inicial pesa mucho menos, los assets internos usan build nuevo, las librerias externas cargan en diferido y la busqueda multisectorial trabaja con concurrencia controlada."
+    },
+    {
+      "title": "Cobertura mas fluida con muchos leads",
+      "desc": "La matriz CP x sector reutiliza un indice temporal de leads para evitar recalculos repetidos y mantener la navegacion agil."
+    },
+    {
+      "title": "Backup diario automatico en disco",
+      "desc": "La app puede guardar una copia completa diaria en una carpeta autorizada del ordenador, incluyendo leads, API keys, cobertura, scraping, campanas, historial y configuracion."
+    },
+    {
+      "title": "Arranque mas estable en GitHub",
+      "desc": "La app carga primero lo esencial, difiere paneles pesados y muestra un diagnostico visible si algun ordenador se queda bloqueado durante la carga."
+    },
+    {
+      "title": "Correcciones de bugs de tours y workflow",
+      "desc": "Se evitan tours simultaneos, se anade posponer, se corrigen acciones del mapa y se preservan retornos sincronicos del workflow."
+    },
+    {
+      "title": "Fluidez y rendimiento",
+      "desc": "La ayuda contextual y el workflow reducen re-renderizados constantes y agrupan actualizaciones para una experiencia mas agil."
+    },
+    {
+      "title": "Estado del manual guardado",
+      "desc": "El manual recuerda la ultima seccion consultada y queda registrado como dato persistente controlado."
+    },
+    {
+      "title": "Manual detallado conectado al tour",
+      "desc": "Cada tarjeta del tour incluye un acceso a un manual completo por seccion para profundizar sin perder el contexto."
+    },
+    {
+      "title": "Tours automaticos en cada actualizacion",
+      "desc": "El tour de novedades queda ligado al build real de app.html: cada nueva publicacion con build nuevo lo muestra una vez."
+    },
+    {
+      "title": "Tour de novedades profesional",
+      "desc": "Nuevo recorrido guiado para Dashboard, Buscar Empresas, Gestion de Leads y Mapa, comparado con la version funcional anterior."
+    },
+    {
+      "title": "Tour compatible con usuarios nuevos",
+      "desc": "El tour de Cobertura espera al tutorial general y salta elementos ocultos o inexistentes para evitar focos vacios."
+    },
+    {
+      "title": "Tour de Cobertura mas legible",
+      "desc": "El foco del tour deja visible la zona senalada y oscurece solo el exterior para que el usuario entienda que se esta explicando."
+    },
+    {
+      "title": "Guia inicial de Cobertura",
+      "desc": "La primera apertura de esta actualizacion muestra un tour con pasos, foco visual y explicaciones del nuevo flujo CP x sector."
+    },
+    {
+      "title": "Cobertura simplificada",
+      "desc": "La pestaña prioriza la matriz CP x sector, buscador y filtros esenciales; objetivos, embudo y filtros completos quedan en opciones avanzadas."
+    },
+    {
+      "title": "Ayuda contextual en toda la app",
+      "desc": "Iconos de interrogacion explican dashboard, scraping, resultados, leads, cobertura, mapa, configuracion, salud y backups."
+    },
+    {
+      "title": "Asistente entrenado con manual operativo",
+      "desc": "El bot recibe el flujo completo actualizado: cobertura, scraping, leads, mapa, backups, APIs, localStorage y versionado local."
+    },
+    {
+      "title": "Workflow profesional integrado",
+      "desc": "Centro de mando diario, mision activa, cierre post-scraping, importacion recomendada, salud del sistema y backups inteligentes."
+    },
+    {
+      "title": "No repetir trabajo",
+      "desc": "La app avisa si se intenta buscar un CP/sector ya trabajado y ofrece abrir cobertura, mapa o buscar igualmente."
+    },
+    {
+      "title": "Embudo CP/sector hasta leads",
+      "desc": "Cobertura, mapa y leads muestran mejor la trazabilidad desde scraping hasta contacto."
+    }
+  ],
+  "history": [
+    {
+      "version": "2.8.2",
+      "build": "2026.06.04.0320",
+      "date": "2026-06-04",
+      "title": "Fase 3 de arranque ligero",
+      "description": "Se difieren Email IA, WhatsApp IA, Inbox, Mapa, Escaneo, Briefing y Smart Import. El cargador mantiene stubs globales para que los botones sigan funcionando y las vistas carguen su modulo al abrirse."
+    },
+    {
+      "version": "2.8.1",
+      "build": "2026.06.04.0310",
+      "date": "2026-06-04",
+      "title": "Fase 2 de carga bajo demanda",
+      "description": "Se introduce un bus persistente de eventos de flujo y se difieren Chat, Ayuda, Backup, Cobertura y Workflow. Las busquedas, errores, guardados e importaciones quedan registradas aunque los modulos pesados carguen despues."
+    },
+    {
+      "version": "2.8.0",
+      "build": "2026.06.04.0300",
+      "date": "2026-06-04",
+      "title": "Fase 2 segura inicial",
+      "description": "Primera carga bajo demanda para Chat, Ayuda y Backup en disco, manteniendo Cobertura y Workflow cargados mientras se preparaba la capa de eventos persistente."
+    },
+    {
+      "version": "2.7.9",
+      "build": "2026.06.04.0200",
+      "date": "2026-06-04",
+      "title": "Fase 1 de optimizacion estructural",
+      "description": "Se evita renderizar listas y paneles ocultos durante el arranque, se limita la vigilancia global del DOM y se compactan busquedas guardadas para reducir peso en localStorage sin tocar leads, API keys ni progreso."
+    },
+    {
+      "version": "2.7.8",
+      "build": "2026.06.04.0100",
+      "date": "2026-06-04",
+      "title": "Arranque seguro en navegadores con muchos datos",
+      "description": "Se difieren snapshots y backups pesados, se evita renderizar Cobertura al abrir Dashboard y se añade un control de calidad para impedir textos visibles con prefijos corruptos."
+    },
+    {
+      "version": "2.7.7",
+      "build": "2026.06.03.0600",
+      "date": "2026-06-03",
+      "title": "Limpieza de titulos y controles visibles",
+      "description": "Se eliminan restos de iconos corruptos como x, x9, xR, xa, x&, x} y S0 de encabezados, botones, filtros y paneles visibles."
+    },
+    {
+      "version": "2.7.6",
+      "build": "2026.06.03.0500",
+      "date": "2026-06-03",
+      "title": "Cierre de riesgos no criticos",
+      "description": "Se corrige la carga de QRCode, se limpian temporizadores pendientes de busqueda, se ordena el filtrado final multi-sector y se excluyen herramientas de limpieza antiguas del despliegue."
+    }
+  ]
+}
+
+
+

@@ -6,13 +6,20 @@
   window.__gordiHelpSystemBooted = true;
 
   const HELP_BUILD = window.GORDI_APP_BUILD || '2026.06.04.0320';
+  const UPDATE_TOUR_REVISION = `${HELP_BUILD}:tour-2026-06-05-filter-flow`;
+  const COVERAGE_TOUR_REVISION = `${HELP_BUILD}:coverage-2026-06-05`;
   const COVERAGE_TOUR_KEY = 'gordi_coverage_update_tour';
   const UPDATE_TOUR_KEY = 'gordi_professional_update_tour';
   const MANUAL_STATE_KEY = 'gordi_manual_state';
+  const TOUR_PROGRESS_KEY = 'gordi_tour_progress';
+  const CONTEXT_TOUR_KEY = 'gordi_context_tours_seen';
   const applied = new WeakSet();
   let helpRenderTimer = null;
   let helpObserver = null;
   let activeTour = null;
+  let activeTourSteps = null;
+  let activeTourKind = null;
+  let tourRenderToken = 0;
 
   const TOPICS = {
     dashboard: 'Panel principal. Resume leads, prioridad, actividad y la siguiente accion recomendada para trabajar sin perder tiempo.',
@@ -42,6 +49,82 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function ensureTourModule(name) {
+    try {
+      if (typeof window.ensureGordiModule === 'function') await window.ensureGordiModule(name);
+    } catch (err) {
+      console.warn('[tour] no se pudo preparar modulo', name, err);
+    }
+  }
+
+  function getTourProgress() {
+    try { return JSON.parse(localStorage.getItem(TOUR_PROGRESS_KEY) || '{}'); }
+    catch { return {}; }
+  }
+
+  function saveTourProgressPatch(patch) {
+    try {
+      const current = getTourProgress();
+      localStorage.setItem(TOUR_PROGRESS_KEY, JSON.stringify({
+        ...current,
+        ...patch,
+        updatedAt: new Date().toISOString()
+      }));
+      renderTourProgressInline();
+    } catch {}
+  }
+
+  function markTourStep(kind, index, total) {
+    if (!kind) return;
+    const progress = getTourProgress();
+    const entry = progress[kind] || {};
+    saveTourProgressPatch({
+      [kind]: {
+        ...entry,
+        revision: kind === 'coverage' ? COVERAGE_TOUR_REVISION : UPDATE_TOUR_REVISION,
+        currentStep: index,
+        totalSteps: total,
+        lastSeenAt: new Date().toISOString(),
+        skippedSteps: Array.from(new Set(entry.skippedSteps || [])),
+      }
+    });
+  }
+
+  function completeTourProgress(kind, completed = true) {
+    if (!kind) return;
+    const progress = getTourProgress();
+    const entry = progress[kind] || {};
+    saveTourProgressPatch({
+      [kind]: {
+        ...entry,
+        completed: !!completed,
+        completedAt: completed ? new Date().toISOString() : entry.completedAt,
+        revision: kind === 'coverage' ? COVERAGE_TOUR_REVISION : UPDATE_TOUR_REVISION,
+      }
+    });
+  }
+
+  function getContextSeen() {
+    try { return JSON.parse(localStorage.getItem(CONTEXT_TOUR_KEY) || '{}'); }
+    catch { return {}; }
+  }
+
+  function markContextSeen(view) {
+    try {
+      const seen = getContextSeen();
+      seen[`${view}:${UPDATE_TOUR_REVISION}`] = new Date().toISOString();
+      localStorage.setItem(CONTEXT_TOUR_KEY, JSON.stringify(seen));
+    } catch {}
+  }
+
+  function hasContextSeen(view) {
+    return !!getContextSeen()[`${view}:${UPDATE_TOUR_REVISION}`];
   }
 
   function addIcon(target, topic, mode) {
@@ -110,35 +193,47 @@
   }
 
   function getTopicActions(topic) {
+    const center = { label: 'Centro de novedades', onclick: 'openTourCenter && openTourCenter()' };
     if (topic === 'coverage') return [
+      center,
       { label: 'Ver guia', onclick: 'startCoverageTour && startCoverageTour(true)' },
       { label: 'Novedades', onclick: 'startUpdateTour && startUpdateTour(true)' },
       { label: 'Abrir mapa', onclick: 'workflowOpenCoverageMap && workflowOpenCoverageMap()' },
       { label: 'Preguntar al asistente', onclick: "chatAsk('Explicame como usar la pestaña de cobertura')" }
     ];
     if (topic === 'map') return [
+      center,
+      { label: 'Tour mapa', onclick: "startContextTour && startContextTour('map', true)" },
       { label: 'Ver novedades', onclick: 'startUpdateTour && startUpdateTour(true)' },
       { label: 'Cobertura', onclick: "setMapMode && setMapMode('coverage')" },
       { label: 'Leads', onclick: "setMapMode && setMapMode('leads')" }
     ];
     if (topic === 'dashboard') return [
+      center,
+      { label: 'Tour dashboard', onclick: "startContextTour && startContextTour('dashboard', true)" },
       { label: 'Ver novedades', onclick: 'startUpdateTour && startUpdateTour(true)' },
       { label: 'Preguntar', onclick: `chatAsk('Explicame las novedades de ${getTopicTitle(topic).replace(/'/g, '')}')` }
     ];
     if (topic === 'search' || topic === 'searchControls') return [
+      center,
+      { label: 'Tour scraping', onclick: "startContextTour && startContextTour('planner', true)" },
       { label: 'Ver novedades', onclick: 'startUpdateTour && startUpdateTour(true)' },
       { label: 'Preguntar scraping', onclick: "chatAsk('Cómo hago una búsqueda correcta y como importo los resultados?')" }
     ];
     if (topic === 'leads') return [
+      center,
+      { label: 'Tour leads', onclick: "startContextTour && startContextTour('leads', true)" },
       { label: 'Ver novedades', onclick: 'startUpdateTour && startUpdateTour(true)' },
       { label: 'Priorizar leads', onclick: "chatExecute('topLeads')" },
       { label: 'Preguntar flujo', onclick: "chatAsk('Cómo gestiono leads desde scraping hasta pipeline?')" }
     ];
     if (topic === 'health' || topic === 'restore') return [
+      center,
       { label: 'Crear backup', onclick: "workflowCreateRestorePoint && workflowCreateRestorePoint('manual_help')" },
       { label: 'Diagnostico', onclick: "chatRunCommand('diagnostics')" }
     ];
     return [
+      center,
       { label: 'Preguntar', onclick: `chatAsk('Explicame ${getTopicTitle(topic).replace(/'/g, '')}')` }
     ];
   }
@@ -289,18 +384,27 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     return rect.width > 8 && rect.height > 8 && style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
   }
 
-  function ensureCoverageTourView() {
+  async function ensureCoverageTourView() {
+    await Promise.all([ensureTourModule('coverage'), ensureTourModule('workflow')]);
     if (typeof showView === 'function') showView('coverage');
     if (typeof renderCoverage === 'function') renderCoverage();
     if (typeof renderWorkflowPanels === 'function') renderWorkflowPanels();
+    await sleep(220);
     setTimeout(renderHelpSystem, 50);
+  }
+
+  function isTourRenderCurrent(token, expectedTour) {
+    return token === tourRenderToken && activeTour === expectedTour;
   }
 
   function waitUntilNoBlockingModal(callback, tries = 0) {
     const blocking = [...document.querySelectorAll('.modal-overlay, .coverage-modal, .ops-modal-overlay, #tutorial-overlay')]
       .find(isTourElementVisible);
     if (!blocking) return callback();
-    if (tries > 20) return;
+    if (tries > 20) {
+      setTimeout(() => waitUntilNoBlockingModal(callback, 0), 8000);
+      return;
+    }
     setTimeout(() => waitUntilNoBlockingModal(callback, tries + 1), 500);
   }
 
@@ -309,16 +413,24 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     if (!force && hasSeenCoverageTour()) return;
     waitUntilNoBlockingModal(() => {
       activeTour = 'coverage';
-      ensureCoverageTourView();
+      activeTourKind = 'coverage';
+      activeTourSteps = COVERAGE_TOUR_STEPS;
       setTimeout(() => renderCoverageTourStep(0), 260);
     });
   }
 
   function closeCoverageTour(markSeen = true) {
+    tourRenderToken += 1;
     document.getElementById('coverage-tour-layer')?.remove();
     document.body.classList.remove('coverage-tour-active');
     activeTour = null;
     if (markSeen) saveCoverageTourSeen(true);
+    if (markSeen) {
+      completeTourProgress('coverage', true);
+      showTourChecklist('coverage');
+    }
+    activeTourKind = null;
+    activeTourSteps = null;
   }
 
   function snoozeCoverageTour() {
@@ -357,9 +469,29 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     return panels.map(style => `<div class="coverage-tour-mask" style="${style}"></div>`).join('');
   }
 
-  function renderCoverageTourStep(index) {
+  async function waitForTourTarget(step, attempts = 10) {
+    for (let i = 0; i <= attempts; i++) {
+      const target = getTourTarget(step);
+      if (target) return target;
+      await sleep(140);
+    }
+    return null;
+  }
+
+  async function renderCoverageTourStep(index) {
+    if (activeTour !== 'coverage') return;
+    const renderToken = ++tourRenderToken;
     const safeIndex = Math.max(0, Math.min(index, COVERAGE_TOUR_STEPS.length - 1));
     const step = COVERAGE_TOUR_STEPS[safeIndex];
+    markTourStep('coverage', safeIndex, COVERAGE_TOUR_STEPS.length);
+    try {
+      await ensureCoverageTourView();
+    } catch (err) {
+      console.warn('[tour] No se pudo preparar Cobertura', err);
+      if (safeIndex < COVERAGE_TOUR_STEPS.length - 1) renderCoverageTourStep(safeIndex + 1);
+      return;
+    }
+    if (!isTourRenderCurrent(renderToken, 'coverage')) return;
     let layer = document.getElementById('coverage-tour-layer');
     if (!layer) {
       layer = document.createElement('div');
@@ -369,14 +501,16 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     }
     document.body.classList.add('coverage-tour-active');
 
-    const target = getTourTarget(step);
+    const target = await waitForTourTarget(step, 12);
+    if (!isTourRenderCurrent(renderToken, 'coverage')) return;
     if (!target && step.selector && safeIndex < COVERAGE_TOUR_STEPS.length - 1) {
       renderCoverageTourStep(safeIndex + 1);
       return;
     }
-    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    if (target) target.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'center' });
 
     setTimeout(() => {
+      if (!isTourRenderCurrent(renderToken, 'coverage')) return;
       const rect = target ? target.getBoundingClientRect() : null;
       const margin = 10;
       const spot = getTourSpotRect(rect, margin);
@@ -389,9 +523,11 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
         <div class="coverage-tour-spot" style="${spotStyle}"></div>
         <div class="coverage-tour-card" style="${cardPos}">
           <div class="coverage-tour-kicker">Guia rapida de Cobertura ${safeIndex + 1}/${COVERAGE_TOUR_STEPS.length}</div>
+          ${getTourPreview(step)}
           <h3>${esc(step.title)}</h3>
           <p>${esc(step.text)}</p>
           ${step.manual ? `<button class="coverage-tour-manual-link" onclick="openAppManual('${esc(step.manual)}')">Ver manual detallado</button>` : ''}
+          <button class="coverage-tour-manual-link" onclick="tourNeedsHelp('coverage', ${safeIndex})">No entiendo esto</button>
           <div class="coverage-tour-progress">
             ${COVERAGE_TOUR_STEPS.map((_, i) => `<i class="${i <= safeIndex ? 'active' : ''}"></i>`).join('')}
           </div>
@@ -399,6 +535,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
             <button class="btn-outline btn-sm" onclick="snoozeCoverageTour()">Ahora no</button>
             <button class="btn-outline btn-sm" onclick="closeCoverageTour(true)">Saltar</button>
             <button class="btn-outline btn-sm" onclick="renderCoverageTourStep(${safeIndex - 1})" ${safeIndex ? '' : 'disabled'}>Atras</button>
+            ${step.practice ? `<button class="btn-outline btn-sm" onclick="runTourPracticeAction('coverage', ${safeIndex})">${esc(step.practice.label)}</button>` : ''}
             <button class="btn-primary btn-sm" onclick="${safeIndex === COVERAGE_TOUR_STEPS.length - 1 ? 'closeCoverageTour(true)' : `renderCoverageTourStep(${safeIndex + 1})`}">${safeIndex === COVERAGE_TOUR_STEPS.length - 1 ? 'Entendido' : 'Siguiente'}</button>
           </div>
         </div>
@@ -415,7 +552,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   function hasSeenCoverageTour() {
     try {
       const data = JSON.parse(localStorage.getItem(COVERAGE_TOUR_KEY) || 'null');
-      return !!data && data.feature === 'coverage_simplified' && data.build === HELP_BUILD && data.completed;
+      return !!data && data.feature === 'coverage_simplified' && data.revision === COVERAGE_TOUR_REVISION && data.completed;
     } catch {
       return false;
     }
@@ -426,6 +563,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
       feature: 'coverage_simplified',
       version: getHelpAppVersion(),
       build: HELP_BUILD,
+      revision: COVERAGE_TOUR_REVISION,
       completed: !!completed,
       seenAt: new Date().toISOString()
     }));
@@ -597,6 +735,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     },
     {
       view: 'dashboard',
+      modules: ['workflow'],
       selector: '#workflow-command-center',
       title: 'Dashboard: centro de mando diario',
       text: 'La novedad principal es que el panel ya no solo muestra datos: te propone la siguiente accion entre cobertura, scraping y leads.',
@@ -618,20 +757,43 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     },
     {
       view: 'planner',
-      selector: '#multi-sector-toolbar',
+      selector: '#multi-sector-toolbar label, #multi-sector-toolbar',
       title: 'Buscar Empresas: multibúsqueda',
       text: 'Ahora puedes buscar varios sectores en el mismo CP o zona y registrar cada sector en Cobertura automaticamente.',
       manual: 'search'
     },
     {
       view: 'planner',
+      modules: ['workflow'],
       selector: '#workflow-post-scraping-panel, #search-results-panel',
       title: 'Buscar Empresas: cierre post-scraping',
       text: 'Cuando haya resultados, la herramienta detecta utiles, duplicados y contactos listos para volcar a Leads.',
-      manual: 'search'
+      manual: 'search',
+      requiresResults: true
+    },
+    {
+      view: 'planner',
+      selector: '#search-sf-wrap, #search-results-panel',
+      title: 'Resultados: filtros combinables',
+      text: 'Los resultados del scraping ahora se pueden ordenar y filtrar por email, telefono, direccion, web, contacto completo, no importados y varias condiciones a la vez.',
+      manual: 'search',
+      practice: { label: 'Abrir filtros', action: "showView('planner');document.getElementById('search-sf-panel')?.classList.add('open')" },
+      release: 'filter-flow',
+      requiresResults: true
+    },
+    {
+      view: 'planner',
+      selector: '#search-workflow-panel, #search-results-panel',
+      title: 'Resultados: siguiente mejor accion',
+      text: 'Tras filtrar, la herramienta resume la calidad visible y propone que hacer: volcar completos, enriquecer visibles, exportar o crear campana con los resultados filtrados.',
+      manual: 'search',
+      practice: { label: 'Ver acciones visibles', action: "showView('planner');document.getElementById('search-workflow-panel')?.scrollIntoView({block:'center'})" },
+      release: 'filter-flow',
+      requiresResults: true
     },
     {
       view: 'leads',
+      modules: ['workflow'],
       selector: '#workflow-lead-origin-summary',
       title: 'Leads: origen real del contacto',
       text: 'Los leads importados desde scraping conservan CP y sector, para saber de donde vienen y volver a Cobertura cuando haga falta.',
@@ -646,6 +808,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     },
     {
       view: 'map',
+      modules: ['inbox'],
       before: () => { if (typeof setMapMode === 'function') setMapMode('leads'); },
       selector: '#map-view .map-command-panel',
       title: 'Mapa: modo operativo',
@@ -654,6 +817,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     },
     {
       view: 'map',
+      modules: ['coverage', 'inbox'],
       before: () => { if (typeof setMapMode === 'function') setMapMode('coverage'); },
       selector: '#map-mode-coverage, #leads-map',
       title: 'Mapa: cobertura por colores',
@@ -662,9 +826,184 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     }
   ];
 
-  function ensureUpdateTourStep(step) {
-    if (step?.view && typeof showView === 'function') showView(step.view);
+  const CONTEXT_TOUR_STEPS = {
+    dashboard: UPDATE_TOUR_STEPS.filter(step => step.view === 'dashboard'),
+    planner: UPDATE_TOUR_STEPS.filter(step => step.view === 'planner'),
+    leads: UPDATE_TOUR_STEPS.filter(step => step.view === 'leads'),
+    map: UPDATE_TOUR_STEPS.filter(step => step.view === 'map'),
+    coverage: COVERAGE_TOUR_STEPS,
+    settings: [
+      {
+        view: 'settings',
+        selector: '#tour-settings-panel',
+        title: 'Tours y manual siempre disponibles',
+        text: 'Desde aqui puedes repetir las novedades, abrir tours por area, revisar progreso y entrar al manual completo.',
+        manual: 'settings',
+        practice: { label: 'Abrir centro', action: 'openTourCenter()' }
+      },
+      {
+        view: 'settings',
+        selector: '#disk-backup-status, #tour-settings-panel',
+        title: 'Continuidad de datos',
+        text: 'Ajustes tambien protege API keys, backups, snapshots y diagnosticos para que una actualizacion no haga perder trabajo.',
+        manual: 'settings'
+      }
+    ]
+  };
+
+  function getAdaptiveUpdateSteps() {
+    const hasResults = Array.isArray(window.tempSearchResults) && window.tempSearchResults.length > 0;
+    let previousSeen = null;
+    try { previousSeen = JSON.parse(localStorage.getItem(UPDATE_TOUR_KEY) || 'null'); } catch {}
+    const onlyLatestChanges = previousSeen && previousSeen.revision && previousSeen.revision !== UPDATE_TOUR_REVISION;
+    const base = onlyLatestChanges
+      ? UPDATE_TOUR_STEPS.filter(step => step.release === 'filter-flow')
+      : UPDATE_TOUR_STEPS;
+    const adaptive = base.filter(step => hasResults || !step.requiresResults);
+    if (adaptive.length) return adaptive;
+    return UPDATE_TOUR_STEPS.filter(step => !step.requiresResults);
+  }
+
+  function getTourPreview(step) {
+    const section = step.manual || step.view || 'workflow';
+    const icons = { dashboard: 'D', search: 'B', leads: 'L', map: 'M', coverage: 'C', settings: 'A', workflow: 'F' };
+    return `<div class="tour-mini-preview"><b>${icons[section] || '?'}</b><span>${esc(step.title || 'Tour')}</span></div>`;
+  }
+
+  function runTourPracticeAction(tourKind = activeTourKind, index = 0) {
+    const steps = activeTourSteps || (tourKind === 'coverage' ? COVERAGE_TOUR_STEPS : UPDATE_TOUR_STEPS);
+    const step = steps[index];
+    if (!step?.practice?.action) return;
+    try { new Function(step.practice.action)(); } catch (err) { console.warn('[tour] practica no ejecutada', err); }
+  }
+
+  function tourNeedsHelp(tourKind = activeTourKind, index = 0) {
+    const steps = activeTourSteps || (tourKind === 'coverage' ? COVERAGE_TOUR_STEPS : UPDATE_TOUR_STEPS);
+    const step = steps[index] || {};
+    openAppManual(step.manual || step.view || 'workflow');
+    const prompt = `Explícame esta parte del tour: ${step.title || 'paso'} - ${step.text || ''}`;
+    try {
+      if (typeof chatAddMessage === 'function') chatAddMessage('user', prompt);
+      if (typeof chatAsk === 'function') chatAsk(prompt);
+    } catch {}
+  }
+
+  function showTourChecklist(kind = activeTourKind || 'update') {
+    const steps = activeTourSteps || (kind === 'coverage' ? COVERAGE_TOUR_STEPS : UPDATE_TOUR_STEPS);
+    let modal = document.getElementById('tour-checklist-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'tour-checklist-modal';
+      modal.className = 'app-manual-modal';
+      document.body.appendChild(modal);
+    }
+    const checklist = steps.slice(0, 8).map(step => step.title || 'Paso completado');
+    modal.onclick = event => { if (event.target === modal) modal.remove(); };
+    modal.innerHTML = `
+      <div class="tour-center-box">
+        <button class="app-manual-close" onclick="document.getElementById('tour-checklist-modal')?.remove()">x</button>
+        <div class="app-manual-kicker">Checklist final</div>
+        <h2>Ya puedes usar estas novedades</h2>
+        <div class="app-manual-list">
+          ${checklist.map((item, idx) => `<div><b>${idx + 1}</b><p>${esc(item)}</p></div>`).join('')}
+        </div>
+        <div class="tour-center-actions">
+          <button class="btn-outline" onclick="openAppManual('workflow')">Abrir manual</button>
+          <button class="btn-primary" onclick="document.getElementById('tour-checklist-modal')?.remove()">Entendido</button>
+        </div>
+      </div>`;
+  }
+
+  function getTourCatalog() {
+    const progress = getTourProgress();
+    return [
+      { id: 'update', title: 'Novedades pendientes', desc: 'Solo lo nuevo de esta revision.', action: "startUpdateTour(true)", done: !!progress.update?.completed },
+      { id: 'dashboard', title: 'Dashboard', desc: 'Centro diario y copiloto.', action: "startContextTour('dashboard', true)", done: hasContextSeen('dashboard') },
+      { id: 'planner', title: 'Scraping y filtros', desc: 'Busqueda, multisector y resultados filtrables.', action: "startContextTour('planner', true)", done: hasContextSeen('planner') },
+      { id: 'coverage', title: 'Cobertura', desc: 'CP, sectores, pendientes y mapa.', action: "startCoverageTour(true)", done: !!progress.coverage?.completed },
+      { id: 'leads', title: 'Gestion de Leads', desc: 'Origen, filtros y pipeline.', action: "startContextTour('leads', true)", done: hasContextSeen('leads') },
+      { id: 'map', title: 'Mapa operativo', desc: 'Leads y cobertura visual.', action: "startContextTour('map', true)", done: hasContextSeen('map') },
+      { id: 'settings', title: 'Ajustes y datos', desc: 'Backups, API keys, tours y manual.', action: "startContextTour('settings', true)", done: hasContextSeen('settings') },
+    ];
+  }
+
+  function openTourCenter() {
+    let modal = document.getElementById('tour-center-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'tour-center-modal';
+      modal.className = 'app-manual-modal';
+      document.body.appendChild(modal);
+    }
+    const items = getTourCatalog();
+    modal.onclick = event => { if (event.target === modal) modal.remove(); };
+    modal.innerHTML = `
+      <div class="tour-center-box">
+        <button class="app-manual-close" onclick="document.getElementById('tour-center-modal')?.remove()">x</button>
+        <div class="app-manual-kicker">Centro de novedades</div>
+        <h2>Tours y aprendizaje</h2>
+        <p class="app-manual-intro">Repite recorridos, mira solo las novedades pendientes o entra al manual detallado.</p>
+        <div class="tour-center-grid">
+          ${items.map(item => `
+            <button class="tour-center-card" onclick="document.getElementById('tour-center-modal')?.remove();${item.action}">
+              <strong>${esc(item.title)}</strong>
+              <span>${esc(item.desc)}</span>
+              <em>${item.done ? 'Visto' : 'Pendiente'}</em>
+            </button>`).join('')}
+        </div>
+        <div class="tour-center-actions">
+          <button class="btn-outline" onclick="openAppManual('workflow')">Manual completo</button>
+          <button class="btn-outline" onclick="resetTourLearningProgress()">Reiniciar progreso</button>
+        </div>
+      </div>`;
+  }
+
+  function resetTourLearningProgress() {
+    localStorage.removeItem(TOUR_PROGRESS_KEY);
+    localStorage.removeItem(CONTEXT_TOUR_KEY);
+    localStorage.removeItem(UPDATE_TOUR_KEY);
+    localStorage.removeItem(COVERAGE_TOUR_KEY);
+    sessionStorage.removeItem('gordi_professional_update_tour_snoozed');
+    sessionStorage.removeItem('gordi_coverage_update_tour_snoozed');
+    renderTourProgressInline();
+    openTourCenter();
+  }
+
+  function renderTourProgressInline() {
+    const el = document.getElementById('tour-progress-inline');
+    if (!el) return;
+    const catalog = getTourCatalog();
+    const done = catalog.filter(item => item.done).length;
+    el.innerHTML = `${done}/${catalog.length} recorridos vistos · Revision ${esc(UPDATE_TOUR_REVISION.split(':').pop())}`;
+  }
+
+  function startContextTour(view, force = false) {
+    if (!force && hasContextSeen(view)) return;
+    const steps = CONTEXT_TOUR_STEPS[view] || [];
+    if (!steps.length) return;
+    if (activeTour) {
+      if (!force) return;
+      closeUpdateTour(false);
+      closeCoverageTour(false);
+    }
+    activeTourSteps = steps;
+    activeTourKind = `context:${view}`;
+    sessionStorage.setItem(`gordi_context_tour_started_${view}`, '1');
+    waitUntilNoBlockingModal(() => {
+      activeTour = 'update';
+      setTimeout(() => renderUpdateTourStep(0), 180);
+    });
+  }
+
+  async function ensureUpdateTourStep(step) {
+    const modules = Array.isArray(step?.modules) ? step.modules : [];
+    if (modules.length) await Promise.all(modules.map(ensureTourModule));
+    if (step?.view && typeof showView === 'function') {
+      showView(step.view);
+      await sleep(220);
+    }
     if (typeof renderWorkflowPanels === 'function') renderWorkflowPanels();
+    await sleep(80);
     if (typeof renderHelpSystem === 'function') setTimeout(renderHelpSystem, 50);
     if (typeof step?.before === 'function') {
       try { step.before(); } catch {}
@@ -672,30 +1011,60 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   }
 
   function startUpdateTour(force = false) {
-    if (activeTour && activeTour !== 'update') return;
+    if (activeTour && activeTour !== 'update') {
+      if (!force) return;
+      closeCoverageTour(false);
+    }
     if (!force && hasSeenUpdateTour()) return;
     waitUntilNoBlockingModal(() => {
       activeTour = 'update';
+      activeTourKind = 'update';
+      activeTourSteps = getAdaptiveUpdateSteps();
       setTimeout(() => renderUpdateTourStep(0), 260);
     });
   }
 
   function closeUpdateTour(markSeen = true) {
+    const closingKind = activeTourKind || 'update';
+    tourRenderToken += 1;
     document.getElementById('coverage-tour-layer')?.remove();
     document.body.classList.remove('coverage-tour-active');
     activeTour = null;
-    if (markSeen) saveUpdateTourSeen(true);
+    if (markSeen && closingKind === 'update') saveUpdateTourSeen(true);
+    if (markSeen && closingKind.startsWith('context:')) markContextSeen(closingKind.split(':')[1]);
+    if (markSeen) {
+      completeTourProgress(closingKind, true);
+      showTourChecklist(closingKind);
+      if (closingKind === 'update') setTimeout(maybeStartCoverageTour, 1200);
+    }
+    activeTourKind = null;
+    activeTourSteps = null;
   }
 
   function snoozeUpdateTour() {
-    sessionStorage.setItem('gordi_professional_update_tour_snoozed', '1');
+    if (activeTourKind && activeTourKind.startsWith('context:')) {
+      sessionStorage.setItem(`gordi_context_tour_snoozed_${activeTourKind.split(':')[1]}`, '1');
+    } else {
+      sessionStorage.setItem('gordi_professional_update_tour_snoozed', '1');
+    }
     closeUpdateTour(false);
   }
 
-  function renderUpdateTourStep(index) {
-    const safeIndex = Math.max(0, Math.min(index, UPDATE_TOUR_STEPS.length - 1));
-    const step = UPDATE_TOUR_STEPS[safeIndex];
-    ensureUpdateTourStep(step);
+  async function renderUpdateTourStep(index) {
+    const steps = activeTourSteps || UPDATE_TOUR_STEPS;
+    if (activeTour !== 'update' || !steps.length) return;
+    const renderToken = ++tourRenderToken;
+    const safeIndex = Math.max(0, Math.min(index, steps.length - 1));
+    const step = steps[safeIndex];
+    markTourStep(activeTourKind || 'update', safeIndex, steps.length);
+    try {
+      await ensureUpdateTourStep(step);
+    } catch (err) {
+      console.warn('[tour] No se pudo preparar el paso', err);
+      if (safeIndex < steps.length - 1) renderUpdateTourStep(safeIndex + 1);
+      return;
+    }
+    if (!isTourRenderCurrent(renderToken, 'update')) return;
 
     let layer = document.getElementById('coverage-tour-layer');
     if (!layer) {
@@ -706,14 +1075,17 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     }
     document.body.classList.add('coverage-tour-active');
 
-    setTimeout(() => {
-      const target = getTourTarget(step);
-      if (!target && step.selector && safeIndex < UPDATE_TOUR_STEPS.length - 1) {
+    setTimeout(async () => {
+      if (!isTourRenderCurrent(renderToken, 'update')) return;
+      const target = await waitForTourTarget(step, 12);
+      if (!isTourRenderCurrent(renderToken, 'update')) return;
+      if (!target && step.selector && safeIndex < steps.length - 1) {
         renderUpdateTourStep(safeIndex + 1);
         return;
       }
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      if (target) target.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'center' });
       setTimeout(() => {
+        if (!isTourRenderCurrent(renderToken, 'update')) return;
         const rect = target ? target.getBoundingClientRect() : null;
         const spot = getTourSpotRect(rect, 10);
         const spotStyle = spot
@@ -724,18 +1096,21 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
           ${renderTourMasks(spot)}
           <div class="coverage-tour-spot" style="${spotStyle}"></div>
           <div class="coverage-tour-card" style="${cardPos}">
-            <div class="coverage-tour-kicker">Novedades de la herramienta ${safeIndex + 1}/${UPDATE_TOUR_STEPS.length}</div>
+            <div class="coverage-tour-kicker">Novedades de la herramienta ${safeIndex + 1}/${steps.length}</div>
+            ${getTourPreview(step)}
             <h3>${esc(step.title)}</h3>
             <p>${esc(step.text)}</p>
             ${step.manual ? `<button class="coverage-tour-manual-link" onclick="openAppManual('${esc(step.manual)}')">Ver manual detallado</button>` : ''}
+            <button class="coverage-tour-manual-link" onclick="tourNeedsHelp('${esc(activeTourKind || 'update')}', ${safeIndex})">No entiendo esto</button>
             <div class="coverage-tour-progress">
-              ${UPDATE_TOUR_STEPS.map((_, i) => `<i class="${i <= safeIndex ? 'active' : ''}"></i>`).join('')}
+              ${steps.map((_, i) => `<i class="${i <= safeIndex ? 'active' : ''}"></i>`).join('')}
             </div>
             <div class="coverage-tour-actions">
               <button class="btn-outline btn-sm" onclick="snoozeUpdateTour()">Ahora no</button>
               <button class="btn-outline btn-sm" onclick="closeUpdateTour(true)">Saltar</button>
               <button class="btn-outline btn-sm" onclick="renderUpdateTourStep(${safeIndex - 1})" ${safeIndex ? '' : 'disabled'}>Atras</button>
-              <button class="btn-primary btn-sm" onclick="${safeIndex === UPDATE_TOUR_STEPS.length - 1 ? 'closeUpdateTour(true)' : `renderUpdateTourStep(${safeIndex + 1})`}">${safeIndex === UPDATE_TOUR_STEPS.length - 1 ? 'Entendido' : 'Siguiente'}</button>
+              ${step.practice ? `<button class="btn-outline btn-sm" onclick="runTourPracticeAction('${esc(activeTourKind || 'update')}', ${safeIndex})">${esc(step.practice.label)}</button>` : ''}
+              <button class="btn-primary btn-sm" onclick="${safeIndex === steps.length - 1 ? 'closeUpdateTour(true)' : `renderUpdateTourStep(${safeIndex + 1})`}">${safeIndex === steps.length - 1 ? 'Entendido' : 'Siguiente'}</button>
             </div>
           </div>
         `;
@@ -751,7 +1126,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   function hasSeenUpdateTour() {
     try {
       const data = JSON.parse(localStorage.getItem(UPDATE_TOUR_KEY) || 'null');
-      return !!data && data.feature === 'professional_update_tour' && data.build === HELP_BUILD && data.completed;
+      return !!data && data.feature === 'professional_update_tour' && data.revision === UPDATE_TOUR_REVISION && data.completed;
     } catch {
       return false;
     }
@@ -762,9 +1137,28 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
       feature: 'professional_update_tour',
       version: getHelpAppVersion(),
       build: HELP_BUILD,
+      revision: UPDATE_TOUR_REVISION,
       completed: !!completed,
       seenAt: new Date().toISOString()
     }));
+  }
+
+  function getTourDiagnostics() {
+    let updateSeen = null;
+    let coverageSeen = null;
+    try { updateSeen = JSON.parse(localStorage.getItem(UPDATE_TOUR_KEY) || 'null'); } catch {}
+    try { coverageSeen = JSON.parse(localStorage.getItem(COVERAGE_TOUR_KEY) || 'null'); } catch {}
+    return {
+      build: HELP_BUILD,
+      updateRevision: UPDATE_TOUR_REVISION,
+      coverageRevision: COVERAGE_TOUR_REVISION,
+      updateSeen,
+      coverageSeen,
+      updateShouldStart: !hasSeenUpdateTour() && !sessionStorage.getItem('gordi_professional_update_tour_snoozed'),
+      coverageShouldStart: hasSeenUpdateTour() && !hasSeenCoverageTour() && !sessionStorage.getItem('gordi_coverage_update_tour_snoozed'),
+      activeTour,
+      helpLoaded: true,
+    };
   }
 
   function getHelpAppVersion() {
@@ -780,6 +1174,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     addHelpToDynamicUi();
     installAssistantKnowledge();
     addChatSuggestions();
+    renderTourProgressInline();
   }
 
   function scheduleHelpRender(delay = 90) {
@@ -806,9 +1201,27 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     });
   }
 
+  function installContextTourHook() {
+    if (window.__gordiContextTourHooked || typeof window.showView !== 'function') return;
+    window.__gordiContextTourHooked = true;
+    const originalShowView = window.showView;
+    window.showView = function (view) {
+      const result = originalShowView.apply(this, arguments);
+      if (CONTEXT_TOUR_STEPS[view] && !hasContextSeen(view) && !sessionStorage.getItem(`gordi_context_tour_started_${view}`)) {
+        setTimeout(() => {
+          if (!activeTour && !document.hidden && !sessionStorage.getItem(`gordi_context_tour_snoozed_${view}`)) {
+            startContextTour(view, false);
+          }
+        }, 1200);
+      }
+      return result;
+    };
+  }
+
   function bootHelp() {
     scheduleHelpRender(1400);
     setTimeout(installHelpObserver, 5000);
+    setTimeout(installContextTourHook, 1700);
     setTimeout(maybeStartUpdateTour, 7000);
     setTimeout(maybeStartCoverageTour, 10000);
     setInterval(() => {
@@ -821,7 +1234,11 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
       pop.remove();
     });
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') document.getElementById('app-manual-modal')?.remove();
+      if (event.key === 'Escape') {
+        document.getElementById('app-manual-modal')?.remove();
+        if (activeTour === 'update') snoozeUpdateTour();
+        else if (activeTour === 'coverage') snoozeCoverageTour();
+      }
     });
   }
 
@@ -839,6 +1256,14 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   window.renderUpdateTourStep = renderUpdateTourStep;
   window.snoozeUpdateTour = snoozeUpdateTour;
   window.openAppManual = openAppManual;
+  window.getTourDiagnostics = getTourDiagnostics;
+  window.openTourCenter = openTourCenter;
+  window.startContextTour = startContextTour;
+  window.renderTourProgressInline = renderTourProgressInline;
+  window.tourNeedsHelp = tourNeedsHelp;
+  window.runTourPracticeAction = runTourPracticeAction;
+  window.resetTourLearningProgress = resetTourLearningProgress;
+  window.showTourChecklist = showTourChecklist;
 })();
 
 

@@ -471,7 +471,7 @@
         Filtros
         <span class="sf-badge" id="leads-sf-badge">0</span>
       </button>
-      <button onclick="exportFilteredData()" style="margin-left:auto;background:none;border:1px solid var(--glass-border);border-radius:7px;padding:.3rem .65rem;font-size:.75rem;color:var(--text-muted);cursor:pointer" title="Exportar vista filtrada">
+      <button onclick="exportFilteredData()" style="margin-left:auto;background:none;border:1px solid var(--glass-border);border-radius:7px;padding:.3rem .65rem;font-size:.75rem;color:var(--text-muted);cursor:pointer" title="Exportar vista filtrada">Exportar</button>
       <button onclick="openLostOpportunitiesPanel()" style="background:none;border:1px solid var(--glass-border);border-radius:7px;padding:.3rem .65rem;font-size:.75rem;color:var(--warning);cursor:pointer" title="Oportunidades perdidas">Perdidas</button>
       <span class="sf-count" id="leads-count-bar"></span>
     </div>
@@ -972,6 +972,7 @@
           </div>
           <div class="sf-chips" id="search-sf-chips"></div>
         </div>
+        <div id="search-workflow-panel" class="search-workflow-panel" style="display:none"></div>
         <!-- Filtros rápidos de resultados -->
         <div class="result-filters" id="result-filters" style="display:none;margin-top:1rem;flex-direction:column;gap:.6rem">
           <div style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">
@@ -1812,6 +1813,21 @@ Y cruzará los remitentes con tus leads para actualizar el CRM."
         <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:.4rem" id="storage-info-text">Calculando espacio...</div>
         <div class="storage-bar"><div class="storage-fill" id="storage-fill" style="width:0%"></div></div>
       </div>
+    </div>
+
+    <div class="glass-panel" id="tour-settings-panel" style="margin-top:1.5rem">
+      <div class="panel-header"><h3>Tours, novedades y manual</h3></div>
+      <p style="color:var(--text-muted);font-size:.85rem;margin:.75rem 0 1rem">
+        Repite recorridos guiados, consulta las novedades por area o abre el manual completo cuando lo necesites.
+      </p>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <button class="btn-primary" onclick="openTourCenter()">Centro de novedades</button>
+        <button class="btn-outline" onclick="startUpdateTour(true)">Tour de novedades</button>
+        <button class="btn-outline" onclick="startCoverageTour(true)">Tour de Cobertura</button>
+        <button class="btn-outline" onclick="startContextTour('planner', true)">Tour de Scraping</button>
+        <button class="btn-outline" onclick="openAppManual('workflow')">Manual completo</button>
+      </div>
+      <div id="tour-progress-inline" style="margin-top:1rem;font-size:.78rem;color:var(--text-muted)">Cargando estado de tours...</div>
     </div>
 
     <!-- PIN Protection -->

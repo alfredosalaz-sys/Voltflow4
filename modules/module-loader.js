@@ -182,7 +182,10 @@
     'renderHelpSystem', 'buildOperationalHelpManual',
     'startCoverageTour', 'closeCoverageTour', 'renderCoverageTourStep',
     'snoozeCoverageTour', 'startUpdateTour', 'closeUpdateTour',
-    'renderUpdateTourStep', 'snoozeUpdateTour', 'openAppManual'
+    'renderUpdateTourStep', 'snoozeUpdateTour', 'openAppManual',
+    'openTourCenter', 'startContextTour', 'renderTourProgressInline',
+    'tourNeedsHelp', 'runTourPracticeAction', 'getTourDiagnostics',
+    'resetTourLearningProgress', 'showTourChecklist'
   ].forEach(name => installLazyFunction(name, 'help'));
 
   [
@@ -248,8 +251,8 @@
       idle(() => ensureGordiModule('diskBackup'), 30000, 60000);
     }
 
-    // Los tours siguen apareciendo por build, pero no bloquean el primer pintado.
-    idle(() => ensureGordiModule('help'), 6500, 15000);
+    // Los tours siguen apareciendo por revision, sin bloquear el primer pintado.
+    idle(() => ensureGordiModule('help'), 2200, 10000);
 
     // Cobertura y workflow forman parte del flujo principal scraping -> leads.
     // Se cargan en segundo plano para que sus wrappers/auditoria existan aunque

@@ -58,6 +58,7 @@ function resetSearchRuntimeFilters() {
   currentResultFilter = 'all';
   currentUXStatusFilter = 'all';
   currentMultiSectorFilter = 'all';
+  currentSearchMinOpportunity = null;
   ['search-results-text'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
@@ -4539,13 +4540,20 @@ async function runAutonomousProspecting() {
   try {
     if (!tempSearchResults.length) await searchBusinesses();
     decorateAllOpportunities();
-    tempSearchResults.sort((a, b) => (b.opportunityScore || 0) - (a.opportunityScore || 0));
-    tempSearchResults.forEach((c, i) => c.autonomousPick = i < 20 && (c.email || c.phone || c.website) && (c.opportunityScore || 0) >= 35);
+    const picks = new Set(getVisibleSearchResultEntries()
+      .sort((a, b) => ((b.c.opportunityScore || 0) - (a.c.opportunityScore || 0)) || (a.i - b.i))
+      .filter(({ c }) => (c.email || c.phone || c.website) && (c.opportunityScore || 0) >= 35)
+      .slice(0, 20)
+      .map(({ i }) => i));
+    tempSearchResults.forEach((c, i) => {
+      c.autonomousPick = picks.has(i);
+      if (c.autonomousPick) c._selectedForImport = true;
+    });
     renderSearchCards();
     renderSearchTable();
     document.querySelectorAll('.search-check').forEach(ch => {
       const idx = parseInt(ch.getAttribute('data-index'));
-      ch.checked = !!tempSearchResults[idx]?.autonomousPick;
+      ch.checked = !!tempSearchResults[idx]?._selectedForImport;
     });
     renderAutonomousProspectingPanel(true);
     renderScrapingQualityPanel(true);
@@ -4749,10 +4757,11 @@ function buildCardHTML(c, i) {
     ? `<div style="display:flex;gap:.25rem;flex-wrap:wrap;margin:.45rem 0 .1rem">${whyPreview.map(x =>
         `<span style="font-size:.61rem;background:${x.ok ? 'rgba(10,132,255,.08)' : 'rgba(239,68,68,.08)'};color:${x.ok ? 'var(--primary)' : 'var(--danger)'};padding:1px 6px;border-radius:8px;border:1px solid ${x.ok ? 'rgba(10,132,255,.18)' : 'rgba(239,68,68,.18)'}" title="${x.value}">${x.label}: ${String(x.value || '').slice(0, 34)}</span>`
       ).join('')}</div>`
-    : '';
+      : '';
+  const isSelected = c._selectedForImport !== false && !alreadyIn;
 
   return `<div class="search-card" id="sc-${i}" data-idx="${i}" data-index="${i}" ${alreadyIn ? 'style="opacity:.65"' : ''} onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('input')) openSidePanel(${i})">
-    <input type="checkbox" class="search-check sc-check search-card-check" data-index="${i}" ${alreadyIn ? '' : 'checked'}>
+    <input type="checkbox" class="search-check sc-check search-card-check" data-index="${i}" onchange="setSearchResultSelected(${i}, this.checked)" ${isSelected ? 'checked' : ''}>
     ${alreadyBadge || oppBadge || chainBadge || llBadge || tempBadge || sectorBadge ? `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.4rem">${alreadyBadge}${sectorBadge}${uxStatusBadge}${tempBadge}${opportunityBadge}${contactQualityBadge}${memoryBadge}${oppBadge}${chainBadge}${llBadge}</div>` : ''}
     <div class="sc-header">
       <div class="sc-avatar" style="${c.logo ? 'padding:0;overflow:hidden' : ''}">
@@ -4841,8 +4850,9 @@ function renderSearchTable() {
     decorateOpportunity(c);
     const why = (c.resultExplanation || buildResultExplanation(c)).slice(0, 3).map(x => `${x.label}: ${x.value}`).join(' | ');
     const contactColor = (c.contactQualityScore || 0) >= 76 ? 'var(--success)' : (c.contactQualityScore || 0) >= 52 ? 'var(--warning)' : 'var(--text-muted)';
+    const rowSelected = c._selectedForImport !== false && !resultAlreadyInLeads(c);
     return `<tr onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('input')) openSidePanel(${i})" style="cursor:pointer">
-      <td><input type="checkbox" class="search-check" data-index="${i}" checked></td>
+      <td><input type="checkbox" class="search-check" data-index="${i}" onchange="setSearchResultSelected(${i}, this.checked)" ${rowSelected ? 'checked' : ''}></td>
       <td>
         <div class="lead-name">${temp.icon} ${c.name} <span style="font-size:.68rem;color:var(--primary)">Score ${c.opportunityScore || 0}</span></div>
         <div class="lead-company">${c.address}</div>
@@ -4878,8 +4888,10 @@ function switchResultView(view) {
 }
 
 let currentResultFilter = 'all';
+let currentSearchMinOpportunity = null;
 function filterResults(type, btn) {
   currentResultFilter = type;
+  currentSearchMinOpportunity = null;
   document.querySelectorAll('.rfilt:not(.ms-filt)').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   applyAdvancedFilters();
@@ -4904,8 +4916,80 @@ const SEARCH_DATA_FILTER_LABELS = {
   full_contact: 'Direccion + email + telefono',
 };
 
+const SEARCH_FILTER_VIEW_PRESETS = [
+  { id: 'ready', name: 'Listos para volcar', filters: ['not_imported', 'full_contact'], match: 'all', sort: 'data_complete_desc' },
+  { id: 'email_phone', name: 'Email + telefono', filters: ['email', 'phone', 'not_imported'], match: 'all', sort: 'contact_quality_desc' },
+  { id: 'complete', name: 'Contacto completo', filters: ['full_contact'], match: 'all', sort: 'data_complete_desc' },
+  { id: 'needs_enrich', name: 'Necesitan enriquecer', quick: 'noemail', filters: ['not_imported'], match: 'all', sort: 'opportunity_desc' },
+  { id: 'high_opp', name: 'Alta oportunidad', filters: ['not_imported'], match: 'all', sort: 'opportunity_desc', minOpportunity: 55 },
+];
+
 function getSelectedSearchDataFilters() {
   return [...document.querySelectorAll('.search-data-filter:checked')].map(el => el.value);
+}
+
+function getSearchFilterState() {
+  return {
+    quick: currentResultFilter || 'all',
+    ux: currentUXStatusFilter || 'all',
+    multiSector: currentMultiSectorFilter || 'all',
+    text: (document.getElementById('search-results-text')?.value || '').toLowerCase(),
+    sort: document.getElementById('search-results-sort')?.value || 'default',
+    dataFilters: getSelectedSearchDataFilters(),
+    dataMatch: document.getElementById('search-data-match')?.value || 'all',
+    ratingMin: parseFloat(document.getElementById('filter-rating-min')?.value || 0),
+    reviewsMin: parseInt(document.getElementById('filter-reviews-min')?.value || 0),
+    distMax: parseFloat(document.getElementById('filter-dist-max')?.value || 50),
+    hasWeb: document.getElementById('filter-has-web')?.checked || false,
+    noLeads: document.getElementById('filter-no-leads')?.checked || false,
+    minOpportunity: currentSearchMinOpportunity,
+  };
+}
+
+function getQuickSearchFilterButton(type = 'all') {
+  return [...document.querySelectorAll('.rfilt:not(.ms-filt)')]
+    .find(btn => btn.getAttribute('onclick')?.includes(`filterResults('${type}'`));
+}
+
+function applySearchFilterState(state = {}) {
+  currentResultFilter = state.quick || 'all';
+  currentUXStatusFilter = state.ux || 'all';
+  currentMultiSectorFilter = state.multiSector || 'all';
+  currentSearchMinOpportunity = state.minOpportunity ?? null;
+  const textEl = document.getElementById('search-results-text');
+  if (textEl) textEl.value = state.text || '';
+  const sortEl = document.getElementById('search-results-sort');
+  if (sortEl) sortEl.value = state.sort || 'default';
+  const matchEl = document.getElementById('search-data-match');
+  if (matchEl) matchEl.value = state.dataMatch || 'all';
+  const wanted = new Set(Array.isArray(state.dataFilters) ? state.dataFilters : []);
+  document.querySelectorAll('.search-data-filter').forEach(el => { el.checked = wanted.has(el.value); });
+  const ratingEl = document.getElementById('filter-rating-min');
+  const ratingVal = document.getElementById('filter-rating-val');
+  if (ratingEl) ratingEl.value = state.ratingMin || 0;
+  if (ratingVal) ratingVal.textContent = String(state.ratingMin || 0);
+  const reviewsEl = document.getElementById('filter-reviews-min');
+  if (reviewsEl) reviewsEl.value = state.reviewsMin || 0;
+  const distEl = document.getElementById('filter-dist-max');
+  const distVal = document.getElementById('filter-dist-val');
+  if (distEl) distEl.value = state.distMax || 50;
+  if (distVal) distVal.textContent = `${state.distMax || 50}km`;
+  const webEl = document.getElementById('filter-has-web');
+  if (webEl) webEl.checked = !!state.hasWeb;
+  const leadsEl = document.getElementById('filter-no-leads');
+  if (leadsEl) leadsEl.checked = !!state.noLeads;
+  document.querySelectorAll('.rfilt:not(.ms-filt)').forEach(b => b.classList.remove('active'));
+  const quickBtn = getQuickSearchFilterButton(currentResultFilter);
+  if (quickBtn) quickBtn.classList.add('active');
+}
+
+function getSavedSearchFilterViews() {
+  try { return JSON.parse(localStorage.getItem('gordi_search_filter_views') || '[]'); }
+  catch { return []; }
+}
+
+function saveSearchFilterViews(views) {
+  localStorage.setItem('gordi_search_filter_views', JSON.stringify((views || []).slice(0, 12)));
 }
 
 function resultAlreadyInLeads(c) {
@@ -4953,17 +5037,10 @@ function searchResultTextMatches(c, text) {
   return hay.includes(text);
 }
 
-function searchResultPassesFilters(c) {
+function searchResultPassesState(c, state = getSearchFilterState()) {
   if (!c) return false;
-  const type       = currentResultFilter || 'all';
-  const ratingMin  = parseFloat(document.getElementById('filter-rating-min')?.value || 0);
-  const reviewsMin = parseInt(document.getElementById('filter-reviews-min')?.value || 0);
-  const distMax    = parseFloat(document.getElementById('filter-dist-max')?.value || 50);
-  const hasWeb     = document.getElementById('filter-has-web')?.checked || false;
-  const noLeads    = document.getElementById('filter-no-leads')?.checked || false;
-  const srText     = (document.getElementById('search-results-text')?.value || '').toLowerCase();
-  const dataFilters = getSelectedSearchDataFilters();
-  const dataMatch = document.getElementById('search-data-match')?.value || 'all';
+  const type = state.quick || 'all';
+  const dataFilters = Array.isArray(state.dataFilters) ? state.dataFilters : [];
 
   let show = true;
   if (type === 'email')      show = !!c.email;
@@ -4975,21 +5052,26 @@ function searchResultPassesFilters(c) {
   if (type === 'pain')       show = !!(c.scrapeSignals && c.scrapeSignals.length > 0);
   if (type === 'new_domain') show = !!(c.domainAge !== undefined && c.domainAge <= 2);
   if (type === 'verified')   show = !!(c.legalStatus && /active|activa/i.test(c.legalStatus));
-  if (show && ratingMin > 0)  show = !!(c.rating && c.rating >= ratingMin);
-  if (show && reviewsMin > 0) show = !!(c.ratingCount && c.ratingCount >= reviewsMin);
-  if (show && distMax < 50 && c.distKm != null) show = c.distKm <= distMax;
-  if (show && hasWeb) show = !!c.website;
-  if (show && noLeads) show = !resultAlreadyInLeads(c);
-  if (show && !searchResultTextMatches(c, srText)) show = false;
+  if (show && Number(state.ratingMin || 0) > 0)  show = !!(c.rating && c.rating >= Number(state.ratingMin || 0));
+  if (show && Number(state.reviewsMin || 0) > 0) show = !!(c.ratingCount && c.ratingCount >= Number(state.reviewsMin || 0));
+  if (show && Number(state.distMax || 50) < 50 && c.distKm != null) show = c.distKm <= Number(state.distMax || 50);
+  if (show && state.hasWeb) show = !!c.website;
+  if (show && state.noLeads) show = !resultAlreadyInLeads(c);
+  if (show && !searchResultTextMatches(c, state.text || '')) show = false;
   if (show && dataFilters.length) {
     const matches = dataFilters.map(filter => resultHasData(c, filter));
-    show = dataMatch === 'any' ? matches.some(Boolean) : matches.every(Boolean);
+    show = state.dataMatch === 'any' ? matches.some(Boolean) : matches.every(Boolean);
   }
-  if (show && currentUXStatusFilter && currentUXStatusFilter !== 'all') show = getLeadUXStatus(c).key === currentUXStatusFilter;
-  if (show && currentMultiSectorFilter && currentMultiSectorFilter !== 'all') {
-    show = (c.matchedSectors || [c.sourceSector || c.segment]).includes(currentMultiSectorFilter);
+  if (show && state.minOpportunity != null) show = Number(c.opportunityScore || 0) >= Number(state.minOpportunity || 0);
+  if (show && state.ux && state.ux !== 'all') show = getLeadUXStatus(c).key === state.ux;
+  if (show && state.multiSector && state.multiSector !== 'all') {
+    show = (c.matchedSectors || [c.sourceSector || c.segment]).includes(state.multiSector);
   }
   return show;
+}
+
+function searchResultPassesFilters(c) {
+  return searchResultPassesState(c, getSearchFilterState());
 }
 
 function compareSearchResultEntries(a, b, srSort) {
@@ -5015,12 +5097,12 @@ function compareSearchResultEntries(a, b, srSort) {
 }
 
 function getVisibleSearchResultEntries() {
-  const srSort = document.getElementById('search-results-sort')?.value || 'default';
+  const state = getSearchFilterState();
   decorateAllOpportunities();
   const entries = tempSearchResults
     .map((c, i) => ({ c, i }))
-    .filter(({ c }) => searchResultPassesFilters(c));
-  return entries.sort((a, b) => compareSearchResultEntries(a, b, srSort));
+    .filter(({ c }) => searchResultPassesState(c, state));
+  return entries.sort((a, b) => compareSearchResultEntries(a, b, state.sort || 'default'));
 }
 
 function applyAdvancedFilters() {
@@ -5031,6 +5113,7 @@ function applyAdvancedFilters() {
   const cntEl = document.getElementById('search-results-count');
   if (cntEl) cntEl.textContent = `${visibleCount} de ${tempSearchResults.length} resultados`;
   updateSearchFilterChips();
+  renderSearchWorkflowPanel();
 }
 
 function removeSearchDataFilter(filter) {
@@ -5040,6 +5123,10 @@ function removeSearchDataFilter(filter) {
 }
 
 function setSearchDataFilterPreset(filters, match = 'all') {
+  currentResultFilter = 'all';
+  currentSearchMinOpportunity = null;
+  document.querySelectorAll('.rfilt:not(.ms-filt)').forEach(b => b.classList.remove('active'));
+  getQuickSearchFilterButton('all')?.classList.add('active');
   const wanted = new Set(Array.isArray(filters) ? filters : []);
   document.querySelectorAll('.search-data-filter').forEach(el => { el.checked = wanted.has(el.value); });
   const matchEl = document.getElementById('search-data-match');
@@ -5078,7 +5165,7 @@ function updateSearchFilterChips() {
   };
 
   if (text) chips.push({ label: `Texto: "${text.slice(0, 24)}"`, clear: "document.getElementById('search-results-text').value='';applyAdvancedFilters()" });
-  if (currentResultFilter && currentResultFilter !== 'all') chips.push({ label: quickLabels[currentResultFilter] || currentResultFilter, clear: "filterResults('all', document.querySelector('.rfilt'))" });
+  if (currentResultFilter && currentResultFilter !== 'all') chips.push({ label: quickLabels[currentResultFilter] || currentResultFilter, clear: "filterResults('all', getQuickSearchFilterButton('all'))" });
   if (dataFilters.length) {
     const prefix = dataMatch === 'any' ? 'Alguno' : 'Todos';
     dataFilters.forEach(filter => chips.push({
@@ -5092,6 +5179,7 @@ function updateSearchFilterChips() {
   if (distMax < 50) chips.push({ label: `Distancia <= ${distMax}km`, clear: "document.getElementById('filter-dist-max').value=50;document.getElementById('filter-dist-val').textContent='50km';applyAdvancedFilters()" });
   if (hasWeb) chips.push({ label: 'Solo con web', clear: "document.getElementById('filter-has-web').checked=false;applyAdvancedFilters()" });
   if (noLeads) chips.push({ label: 'No esta en Leads', clear: "document.getElementById('filter-no-leads').checked=false;applyAdvancedFilters()" });
+  if (currentSearchMinOpportunity != null) chips.push({ label: `Oportunidad >= ${currentSearchMinOpportunity}`, clear: "currentSearchMinOpportunity=null;applyAdvancedFilters()" });
   if (currentMultiSectorFilter && currentMultiSectorFilter !== 'all') chips.push({ label: `Sector: ${getSegmentLabel(currentMultiSectorFilter)}`, clear: "filterMultiSectorResults('all')" });
 
   chipsEl.innerHTML = chips.map(c => `
@@ -5105,14 +5193,229 @@ function updateSearchFilterChips() {
   if (moreBtn) moreBtn.classList.toggle('has-active', count > 0);
 }
 
+function countSearchResultsForState(state) {
+  decorateAllOpportunities();
+  return tempSearchResults.filter(c => searchResultPassesState(c, state)).length;
+}
+
+function getSearchFlowStats() {
+  const all = tempSearchResults || [];
+  const visible = getVisibleSearchResultEntries().map(x => x.c);
+  const count = list => list.length;
+  const metric = (list, filter) => list.filter(c => resultHasData(c, filter)).length;
+  return {
+    total: all.length,
+    visible: visible.length,
+    email: metric(visible, 'email'),
+    phone: metric(visible, 'phone'),
+    full: metric(visible, 'full_contact'),
+    notImported: metric(visible, 'not_imported'),
+    needsEnrich: visible.filter(c => !c.email || !c.phone || !c.website).length,
+    highOpportunity: visible.filter(c => Number(c.opportunityScore || 0) >= 55).length,
+    selected: getVisibleSearchChecks().filter(ch => ch.checked).length,
+    allEmail: metric(all, 'email'),
+    allPhone: metric(all, 'phone'),
+    allFull: metric(all, 'full_contact'),
+    visibleList: visible,
+  };
+}
+
+function renderSearchWorkflowPanel() {
+  const panel = document.getElementById('search-workflow-panel');
+  if (!panel) return;
+  if (!Array.isArray(tempSearchResults) || !tempSearchResults.length) {
+    panel.style.display = 'none';
+    return;
+  }
+  const stats = getSearchFlowStats();
+  const saved = getSavedSearchFilterViews();
+  const current = getSearchFilterState();
+  const views = [
+    ...SEARCH_FILTER_VIEW_PRESETS.map(view => ({
+      ...view,
+      count: countSearchResultsForState({ ...current, quick: view.quick || 'all', dataFilters: view.filters || [], dataMatch: view.match || 'all', sort: view.sort || 'default', minOpportunity: view.minOpportunity }),
+      builtIn: true,
+    })),
+    ...saved.map(view => ({
+      ...view,
+      count: countSearchResultsForState({ ...current, ...view.state }),
+      builtIn: false,
+    })),
+  ];
+  const next = getSearchNextBestAction(stats);
+  panel.style.display = 'grid';
+  panel.innerHTML = `
+    <div class="search-flow-summary">
+      ${[
+        ['Visibles', `${stats.visible}/${stats.total}`],
+        ['Email', stats.email],
+        ['Telefono', stats.phone],
+        ['Completos', stats.full],
+        ['No importados', stats.notImported],
+        ['Alta oportunidad', stats.highOpportunity],
+      ].map(([label, value]) => `<div class="search-flow-stat"><strong>${value}</strong><span>${label}</span></div>`).join('')}
+    </div>
+    <div class="search-flow-board">
+      <div class="search-flow-box">
+        <div class="search-flow-title">
+          <div><strong>Vistas de trabajo</strong><span>Filtra con un clic y conserva tus propias vistas.</span></div>
+          <button class="btn-outline btn-sm" onclick="saveCurrentSearchFilterView()">Guardar vista</button>
+        </div>
+        <div class="search-view-pills">
+          ${views.map(view => `
+            <button class="search-view-pill" onclick="applySavedSearchFilterView('${view.id}', ${view.builtIn ? 'true' : 'false'})">
+              ${view.name} <b>${view.count}</b>
+            </button>`).join('')}
+        </div>
+      </div>
+      <div class="search-flow-box search-next-action">
+        <div class="search-flow-title">
+          <div><strong>Siguiente mejor accion</strong><span>Basada en los resultados visibles.</span></div>
+        </div>
+        <p>${next.text}</p>
+        <button class="${next.primary ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="${next.action}">${next.label}</button>
+        <div class="search-flow-actions">
+          <button class="btn-outline btn-sm" onclick="selectVisibleSearchResults(true)">Seleccionar visibles</button>
+          <button class="btn-outline btn-sm" onclick="selectVisibleSearchResults(false)">Quitar visibles</button>
+          <button class="btn-outline btn-sm" onclick="exportSearchCSV()">Exportar visibles</button>
+          <button class="btn-outline btn-sm" onclick="createCampaignFromVisibleSearch()">Campana visibles</button>
+          <button class="btn-outline btn-sm" onclick="enrichVisibleSearchResults()">Enriquecer visibles</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function getSearchNextBestAction(stats) {
+  if (!stats.visible) {
+    return { label: 'Limpiar filtros', action: 'resetAdvancedFilters();resetSearchResultsFilters()', text: 'Los filtros actuales no dejan resultados visibles.', primary: false };
+  }
+  if (stats.full > 0) {
+    return { label: `Volcar ${stats.full} completos`, action: "setSearchDataFilterPreset(['full_contact','not_imported']);selectVisibleSearchResults(true);importSelectedSearch()", text: 'Hay empresas con direccion, email y telefono listas para pasar a Leads.', primary: true };
+  }
+  if (stats.email && stats.phone) {
+    return { label: 'Trabajar email + telefono', action: "setSearchDataFilterPreset(['email','phone','not_imported']);selectVisibleSearchResults(true)", text: 'Hay contactos accionables aunque no todos tengan el paquete completo.', primary: true };
+  }
+  if (stats.needsEnrich) {
+    return { label: `Enriquecer ${stats.needsEnrich} visibles`, action: 'enrichVisibleSearchResults()', text: 'La mayor mejora ahora es completar datos antes de importar.', primary: false };
+  }
+  return { label: 'Seleccionar visibles', action: 'selectVisibleSearchResults(true)', text: 'La vista actual esta lista para una accion masiva.', primary: false };
+}
+
+function applySavedSearchFilterView(id, builtIn = false) {
+  const view = builtIn
+    ? SEARCH_FILTER_VIEW_PRESETS.find(v => v.id === id)
+    : getSavedSearchFilterViews().find(v => v.id === id);
+  if (!view) return;
+  const state = builtIn
+    ? { ...getSearchFilterState(), quick: view.quick || 'all', dataFilters: view.filters || [], dataMatch: view.match || 'all', sort: view.sort || 'default', minOpportunity: view.minOpportunity }
+    : { ...getSearchFilterState(), ...(view.state || {}) };
+  applySearchFilterState(state);
+  applyAdvancedFilters();
+}
+
+function saveCurrentSearchFilterView() {
+  const name = prompt('Nombre de la vista de filtros:', 'Mi vista de scraping');
+  if (!name) return;
+  const views = getSavedSearchFilterViews().filter(v => v.name !== name.trim());
+  views.unshift({ id: `user_${Date.now()}`, name: name.trim().slice(0, 38), state: getSearchFilterState(), createdAt: new Date().toISOString() });
+  saveSearchFilterViews(views);
+  renderSearchWorkflowPanel();
+  showToast('Vista de filtros guardada');
+}
+
+function selectVisibleSearchResults(checked = true) {
+  getVisibleSearchChecks().forEach(ch => {
+    const idx = parseInt(ch.getAttribute('data-index'), 10);
+    setSearchResultSelected(idx, checked, false);
+    ch.checked = checked;
+  });
+  renderSearchWorkflowPanel();
+}
+
+function createCampaignFromVisibleSearch() {
+  const entries = getVisibleSearchResultEntries().filter(({ c }) => !resultAlreadyInLeads(c));
+  if (!entries.length) { showToast('No hay resultados visibles nuevos para campana'); return; }
+  const segment = document.getElementById('plan-segment')?.value || 'Otros';
+  const location = document.getElementById('plan-location')?.value?.trim() || 'busqueda';
+  const baseName = `Vista filtrada - ${location} - ${new Date().toLocaleDateString('es-ES')}`;
+  if (!confirm(`Crear campana con ${entries.length} resultados visibles nuevos?`)) return;
+  createSearchSafetyPoint('before_visible_scraping_campaign');
+  const newLeads = entries.map(({ c }) => buildLeadFromSearchCompany(c, c.sourceSector || segment, location, baseName));
+  leads = [...newLeads, ...leads];
+  const leadIds = newLeads.map(l => l.id);
+  campaigns.push({
+    id: Date.now(),
+    name: baseName,
+    segment: currentMultiSectorFilter && currentMultiSectorFilter !== 'all' ? currentMultiSectorFilter : segment,
+    sequence: 'cold',
+    desc: `Campana creada desde resultados visibles filtrados: ${location}.`,
+    leadCount: leadIds.length,
+    leadIds,
+    sent: 0,
+    date: new Date().toISOString(),
+    active: true
+  });
+  saveLeads();
+  localStorage.setItem('gordi_campaigns', JSON.stringify(campaigns));
+  recordLeadMemoryBulk(entries.map(x => x.c), 'visible_campaign_created', c => ({ segment: c.sourceSector || segment, location, score: c.opportunityScore || 0 }));
+  renderAll();
+  renderDashboardCharts();
+  if (typeof renderCampaigns === 'function') renderCampaigns();
+  emitSearchFlow('leads:imported-from-search', {
+    source: 'visible_campaign',
+    location,
+    sectors: [...new Set(newLeads.map(l => l.coverageSector || l.segment).filter(Boolean))],
+    leadIds,
+    count: leadIds.length,
+  });
+  showToast(`Campana visible creada: ${leadIds.length} leads`);
+}
+
+async function enrichVisibleSearchResults() {
+  const entries = getVisibleSearchResultEntries()
+    .filter(({ c }) => !c.email || !c.phone || !c.website || !c.decision_maker)
+    .slice(0, 25);
+  if (!entries.length) { showToast('Los visibles ya estan suficientemente completos'); return; }
+  if (!confirm(`Enriquecer hasta ${entries.length} resultados visibles?`)) return;
+  for (const { c, i } of entries) {
+    if (typeof enrichSingleCard === 'function') await enrichSingleCard(i);
+    else if (typeof reEnrichOne === 'function') await reEnrichOne(i);
+    else break;
+    decorateOpportunity(c);
+  }
+  applyAdvancedFilters();
+  updateEnrichStats();
+  showToast(`Enriquecimiento visible finalizado: ${entries.length}`);
+}
+
 function resetSearchResultsFilters() {
+  currentResultFilter = 'all';
+  currentUXStatusFilter = 'all';
+  currentMultiSectorFilter = 'all';
+  currentSearchMinOpportunity = null;
   ['search-results-text','search-results-sort'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = id === 'search-results-sort' ? 'default' : '';
   });
+  const ratingEl = document.getElementById('filter-rating-min');
+  const ratingVal = document.getElementById('filter-rating-val');
+  const reviewsEl = document.getElementById('filter-reviews-min');
+  const distEl = document.getElementById('filter-dist-max');
+  const distVal = document.getElementById('filter-dist-val');
+  const webEl = document.getElementById('filter-has-web');
+  const leadsEl = document.getElementById('filter-no-leads');
+  if (ratingEl) ratingEl.value = 0;
+  if (ratingVal) ratingVal.textContent = '0';
+  if (reviewsEl) reviewsEl.value = 0;
+  if (distEl) distEl.value = 50;
+  if (distVal) distVal.textContent = '50km';
+  if (webEl) webEl.checked = false;
+  if (leadsEl) leadsEl.checked = false;
   document.querySelectorAll('.search-data-filter').forEach(el => { el.checked = false; });
   const matchEl = document.getElementById('search-data-match');
   if (matchEl) matchEl.value = 'all';
+  document.querySelectorAll('.rfilt:not(.ms-filt)').forEach(b => b.classList.remove('active'));
+  getQuickSearchFilterButton('all')?.classList.add('active');
   applyAdvancedFilters();
 }
 
@@ -5135,12 +5438,26 @@ function resetAdvancedFilters() {
   document.querySelectorAll('.search-data-filter').forEach(el => { el.checked = false; });
   const matchEl = document.getElementById('search-data-match');
   if (matchEl) matchEl.value = 'all';
-  filterResults('all', document.querySelector('.rfilt'));
+  currentSearchMinOpportunity = null;
+  filterResults('all', getQuickSearchFilterButton('all'));
 }
 
 
 function toggleAllSearch(checked) {
-  document.querySelectorAll('.search-check').forEach(c => c.checked = checked);
+  getVisibleSearchChecks().forEach(ch => {
+    ch.checked = checked;
+    const idx = parseInt(ch.getAttribute('data-index'), 10);
+    setSearchResultSelected(idx, checked, false);
+  });
+  renderSearchWorkflowPanel();
+}
+
+function setSearchResultSelected(idx, checked, refresh = true) {
+  const c = tempSearchResults[idx];
+  if (!c) return;
+  c._selectedForImport = !!checked;
+  document.querySelectorAll(`.search-check[data-index="${idx}"]`).forEach(ch => { ch.checked = !!checked; });
+  if (refresh) renderSearchWorkflowPanel();
 }
 
 function getVisibleSearchChecks() {

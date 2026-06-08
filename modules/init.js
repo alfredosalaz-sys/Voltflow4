@@ -940,6 +940,47 @@ function updateDate() {
 
 // ============ NAVEGACION ============
 
+function syncViewNavigationState(view) {
+  document.querySelectorAll('aside nav li[data-view]').forEach(li => {
+    li.classList.toggle('active', li.getAttribute('data-view') === view);
+  });
+
+  let mobileMatched = false;
+  document.querySelectorAll('#mobile-bottom-nav .mob-nav-btn[data-view]').forEach(btn => {
+    const btnView = btn.getAttribute('data-view');
+    const isActive = btnView === view;
+    if (isActive) mobileMatched = true;
+    btn.classList.toggle('active', isActive);
+  });
+
+  const moreBtn = document.querySelector('#mobile-bottom-nav .mob-nav-btn[data-view="more"]');
+  if (moreBtn) moreBtn.classList.toggle('active', !mobileMatched);
+  document.body.dataset.activeView = view;
+}
+
+function closeMobileChromeAfterNavigation() {
+  if (window.innerWidth > 1024) return;
+  try {
+    if (typeof closeMobileSidebar === 'function') closeMobileSidebar();
+  } catch {}
+}
+
+function notifyViewChanged(view) {
+  const detail = {
+    view,
+    id: `${view}-view`,
+    timestamp: Date.now()
+  };
+  try {
+    document.dispatchEvent(new CustomEvent('gordi:view-changed', { detail }));
+  } catch {}
+  try {
+    if (typeof VoltiumEvents !== 'undefined' && typeof VoltiumEvents.emit === 'function') {
+      VoltiumEvents.emit('view:changed', detail);
+    }
+  } catch {}
+}
+
 
 // ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ 
 //     MODULO: UI
@@ -955,13 +996,17 @@ function showView(view) {
   if (!target) {
     const fallback = document.getElementById('dashboard-view');
     if (fallback) fallback.classList.add('active');
+    syncViewNavigationState('dashboard');
+    closeMobileChromeAfterNavigation();
+    notifyViewChanged('dashboard');
+    requestAnimationFrame(() => {
+      if (typeof refreshVisualSystem === 'function') refreshVisualSystem();
+    });
     console.warn('Vista no encontrada:', view);
     return;
   }
   target.classList.add('active');
-  document.querySelectorAll('aside nav li').forEach(li => {
-    li.classList.toggle('active', li.getAttribute('data-view') === view);
-  });
+  syncViewNavigationState(view);
   if (view === 'leads') renderLeads();
   if (view === 'kanban') renderKanban();
   if (view === 'campaigns') renderCampaigns();
@@ -980,7 +1025,16 @@ function showView(view) {
     renderSearchHistory();
     updateStorageInfo();
   }
-  if (view === 'dashboard') { renderDashboardCharts(); renderRecentActivity(); renderTopLeads(); }
+  if (view === 'dashboard') { renderDashboardCharts(); renderRecentActivity(); renderTopLeads(); if (typeof renderTodayPanel === 'function') renderTodayPanel(); }
+
+  closeMobileChromeAfterNavigation();
+  const main = document.querySelector('main');
+  if (main) main.scrollTop = 0;
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+  notifyViewChanged(view);
+  requestAnimationFrame(() => {
+    if (typeof refreshVisualSystem === 'function') refreshVisualSystem();
+  });
 }
 
 function toggleLeadForm() {

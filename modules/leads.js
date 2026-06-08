@@ -260,20 +260,52 @@ function getActiveLeadFilterCount() {
   ].filter(Boolean).length;
 }
 
+function getActiveLeadFiltersSummary() {
+  const coverageScope = getCoverageLeadScope();
+  const items = [];
+  const pushIf = (value, label) => { if (value) items.push(label); };
+  pushIf(document.getElementById('lead-search')?.value || '', 'busqueda');
+  pushIf(document.getElementById('filter-segment')?.value || '', `segmento ${document.getElementById('filter-segment')?.value}`);
+  pushIf(document.getElementById('filter-status')?.value || '', `estado ${document.getElementById('filter-status')?.value}`);
+  pushIf(document.getElementById('filter-source')?.value || '', `origen ${document.getElementById('filter-source')?.value}`);
+  pushIf(document.getElementById('filter-score-min')?.value || '', `score >= ${document.getElementById('filter-score-min')?.value}`);
+  pushIf(document.getElementById('filter-date-range')?.value || '', `fecha ${document.getElementById('filter-date-range')?.value}`);
+  pushIf(document.getElementById('filter-next-contact')?.value || '', `seguimiento ${document.getElementById('filter-next-contact')?.value}`);
+  if (coverageScope) {
+    items.push(`cobertura ${coverageScope.location || coverageScope.label || coverageScope.sector || 'activa'}`);
+  }
+  return items;
+}
+
 function showLeadEmptyState(empty, activeCount, totalLeads) {
   if (!empty) return;
   empty.style.display = 'flex';
   if (totalLeads > 0 && activeCount > 0) {
+    const activeFilters = getActiveLeadFiltersSummary();
+    const hasResults = Array.isArray(window.tempSearchResults) && window.tempSearchResults.length > 0;
     empty.innerHTML = `
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <p>Hay ${totalLeads} leads cargados, pero los filtros actuales no muestran ninguno.</p>
-      <button class="btn-primary" onclick="resetLeadsFilters()">Limpiar filtros y ver leads</button>`;
+      <p>Hay ${totalLeads} leads cargados, pero los filtros activos no dejan ninguno visible.</p>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;justify-content:center;max-width:520px">
+        ${activeFilters.map(item => `<span style="padding:.32rem .6rem;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--glass-border);font-size:.72rem;color:var(--text-muted)">${String(item).replace(/</g,'&lt;')}</span>`).join('')}
+      </div>
+      <div style="display:flex;gap:.55rem;flex-wrap:wrap;justify-content:center">
+        <button class="btn-primary" onclick="resetLeadsFilters()">Limpiar filtros</button>
+        <button class="btn-outline" onclick="showView('kanban')">Ver pipeline</button>
+        ${hasResults ? '<button class="btn-outline" onclick="showView(\'planner\');setTimeout(()=>document.getElementById(\'search-results-panel\')?.scrollIntoView({behavior:\'smooth\',block:\'start\'}),120)">Volver a resultados</button>' : '<button class="btn-outline" onclick="showView(\'planner\')">Buscar empresas</button>'}
+      </div>
+      <div style="font-size:.74rem;color:var(--text-dim);max-width:520px;text-align:center">
+        Sugerencia: si solo quieres revisar trabajo pendiente, prueba ordenar por score o usar seguimiento vencido en lugar de combinar varios filtros.
+      </div>`;
     return;
   }
   empty.innerHTML = `
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-    <p>No hay leads que mostrar</p>
-    <button class="btn-primary" onclick="showView('planner')">Buscar empresas</button>`;
+    <p>No hay leads que mostrar todavía.</p>
+    <div style="display:flex;gap:.55rem;flex-wrap:wrap;justify-content:center">
+      <button class="btn-primary" onclick="showView('planner')">Buscar empresas</button>
+      <button class="btn-outline" onclick="toggleLeadForm();showView('leads')">Crear lead manual</button>
+    </div>`;
 }
 
 function renderLeads() {

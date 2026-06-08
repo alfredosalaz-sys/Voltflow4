@@ -10,6 +10,153 @@ function updateStats() {
   set('stat-waiting', emailHistory.filter(h => h.status === 'Visita').length);
 }
 
+function getDashboardPrioritySnapshot() {
+  const activeLeads = leads.filter(l => !l.archived);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const urgent = activeLeads.filter(l => l.status === 'Pendiente' && (l.score || 0) >= 75);
+  const overdue = activeLeads.filter(l => {
+    if (!l.next_contact) return false;
+    const next = new Date(l.next_contact);
+    next.setHours(0, 0, 0, 0);
+    return next < today && l.status !== 'Cerrado';
+  });
+  const pending = activeLeads.filter(l => !l.status || l.status === 'Pendiente');
+  const contactedWaiting = activeLeads.filter(l => l.status === 'Contactado');
+  const results = Array.isArray(window.tempSearchResults) ? window.tempSearchResults : [];
+  const selectedResults = results.filter(r => r && r._selectedForImport !== false).length;
+  const withCoverageOrigin = activeLeads.filter(l => l.coverageMission || l.coverageMissionLabel || l.coverageLocation).length;
+  return {
+    active: activeLeads.length,
+    urgent,
+    overdue,
+    pending,
+    contactedWaiting,
+    results,
+    selectedResults,
+    withCoverageOrigin
+  };
+}
+
+function dashboardSetLeadFilters(config = {}) {
+  const pairs = {
+    'lead-search': config.search ?? null,
+    'filter-segment': config.segment ?? null,
+    'filter-status': config.status ?? null,
+    'filter-source': config.source ?? null,
+    'sort-leads': config.sort ?? null,
+    'filter-score-min': config.scoreMin ?? null,
+    'filter-date-range': config.dateRange ?? null,
+    'filter-next-contact': config.nextContact ?? null
+  };
+  Object.entries(pairs).forEach(([id, value]) => {
+    if (value === null) return;
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+  });
+}
+
+function dashboardBridge(action) {
+  if (action === 'urgent') {
+    showView('leads');
+    dashboardSetLeadFilters({ status: 'Pendiente', sort: 'score', scoreMin: '70', nextContact: '' });
+    renderLeads();
+    return;
+  }
+  if (action === 'overdue') {
+    showView('leads');
+    dashboardSetLeadFilters({ status: '', sort: 'next_contact', scoreMin: '', nextContact: 'overdue' });
+    renderLeads();
+    return;
+  }
+  if (action === 'pending') {
+    showView('leads');
+    dashboardSetLeadFilters({ status: 'Pendiente', sort: 'score', scoreMin: '', nextContact: '' });
+    renderLeads();
+    return;
+  }
+  if (action === 'search-leads') {
+    showView('leads');
+    dashboardSetLeadFilters({ source: 'search', status: '', sort: 'date', scoreMin: '', nextContact: '' });
+    renderLeads();
+    return;
+  }
+  if (action === 'results') {
+    showView('planner');
+    setTimeout(() => {
+      const panel = document.getElementById('search-results-panel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return;
+  }
+  if (action === 'results-import') {
+    if (Array.isArray(window.tempSearchResults) && window.tempSearchResults.length && typeof importSelectedSearch === 'function') {
+      importSelectedSearch();
+      return;
+    }
+    dashboardBridge('results');
+    return;
+  }
+  if (action === 'tracking') {
+    showView('tracking');
+    renderTracking();
+    return;
+  }
+  if (action === 'pipeline') {
+    showView('kanban');
+    renderKanban();
+    return;
+  }
+  if (action === 'search') {
+    showView('planner');
+    setTimeout(() => document.getElementById('plan-location')?.focus(), 120);
+  }
+}
+
+function renderPriorityControlCenter() {
+  const snap = getDashboardPrioritySnapshot();
+  const items = [
+    {
+      label: 'Contactar primero',
+      value: `${snap.urgent.length} urgentes`,
+      hint: snap.urgent.length ? 'Score alto pendientes' : 'Sin urgentes bloqueando',
+      action: 'urgent',
+      tone: snap.urgent.length ? 'var(--danger)' : 'var(--success)'
+    },
+    {
+      label: 'Seguimientos vencidos',
+      value: `${snap.overdue.length} por mover`,
+      hint: snap.overdue.length ? 'Hay acciones atrasadas' : 'Seguimiento al dia',
+      action: 'overdue',
+      tone: snap.overdue.length ? 'var(--warning)' : 'var(--success)'
+    },
+    {
+      label: 'Resultados listos',
+      value: `${snap.results.length} scraping`,
+      hint: snap.results.length ? `${snap.selectedResults} seleccionados para importar` : 'Sin resultados pendientes',
+      action: snap.results.length ? 'results' : 'search',
+      tone: snap.results.length ? 'var(--primary)' : 'var(--text-dim)'
+    },
+    {
+      label: 'Cobertura trazable',
+      value: `${snap.withCoverageOrigin} con origen`,
+      hint: `${snap.pending.length} pendientes totales`,
+      action: 'search-leads',
+      tone: 'var(--primary)'
+    }
+  ];
+
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:${snap.urgent.length || snap.overdue.length ? '.85rem' : '0'}">
+      ${items.map(item => `
+        <button type="button" onclick="dashboardBridge('${item.action}')" style="text-align:left;padding:.95rem 1rem;border-radius:14px;border:1px solid var(--glass-border);background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.025));display:grid;gap:.28rem;cursor:pointer">
+          <span style="font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim)">${item.label}</span>
+          <strong style="font-size:1.05rem;color:${item.tone}">${item.value}</strong>
+          <span style="font-size:.74rem;color:var(--text-muted)">${item.hint}</span>
+        </button>`).join('')}
+    </div>`;
+}
+
 // 🏛️ ARQUITECTURA: Escuchar cambios globales
 if (typeof VoltiumEvents !== 'undefined') {
     VoltiumEvents.on('state:changed', () => {
@@ -55,7 +202,12 @@ function renderTopLeads() {
     .slice(0, 6);
 
   if (!top.length) {
-    container.innerHTML = '<p style="color:var(--text-muted);font-size:.83rem;margin-top:.5rem">No hay leads pendientes</p>';
+    container.innerHTML = `
+      <p style="color:var(--text-muted);font-size:.83rem;margin-top:.5rem">No hay leads pendientes con prioridad operativa ahora mismo.</p>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem">
+        <button class="btn-action" onclick="dashboardBridge('search')">Buscar nuevas empresas</button>
+        <button class="btn-action" onclick="dashboardBridge('pipeline')">Revisar pipeline</button>
+      </div>`;
     return;
   }
 
@@ -234,7 +386,7 @@ function renderSmartAlert() {
     return Math.floor((Date.now()-new Date(l.date))/(1000*86400)) > 5;
   });
 
-  let html = '';
+  let html = renderPriorityControlCenter();
   if (urgent.length > 0) {
     html += `<div class="smart-alert-box alert-urgent">
       <span style="font-size:1.1rem">🔥</span>
@@ -242,7 +394,7 @@ function renderSmartAlert() {
         <strong>${urgent.length} lead${urgent.length>1?'s':''} de alta prioridad</strong> esperando contacto — score ≥75
         <div style="font-size:.75rem;margin-top:.2rem;opacity:.8">${urgent.slice(0,3).map(l=>l.company).join(', ')}${urgent.length>3?' y '+(urgent.length-3)+' más':''}</div>
       </div>
-      <button class="btn-action" onclick="showView('leads')" style="margin-left:auto;white-space:nowrap">Ver -></button>
+      <button class="btn-action" onclick="dashboardBridge('urgent')" style="margin-left:auto;white-space:nowrap">Ver -></button>
     </div>`;
   }
   if (overdue.length > 0) {
@@ -252,7 +404,7 @@ function renderSmartAlert() {
         <strong>${overdue.length} lead${overdue.length>1?'s':''}</strong> contactados hace más de 5 días sin respuesta registrada
         <div style="font-size:.75rem;margin-top:.2rem;opacity:.8">${overdue.slice(0,3).map(l=>l.company).join(', ')}</div>
       </div>
-      <button class="btn-action" onclick="showView('kanban')" style="margin-left:auto;white-space:nowrap">Pipeline -></button>
+      <button class="btn-action" onclick="dashboardBridge('pipeline')" style="margin-left:auto;white-space:nowrap">Pipeline -></button>
     </div>`;
   }
 
@@ -270,7 +422,7 @@ function renderSmartAlert() {
         <strong>${hotUncontacted.length} lead${hotUncontacted.length>1?'s':''} caliente${hotUncontacted.length>1?'s':''} sin contactar</strong> — llevan más de 48h esperando
         <div style="font-size:.75rem;margin-top:.2rem;opacity:.8">${hotUncontacted.slice(0,3).map(l=>`${l.company} (${l.score}pts)`).join(', ')}${hotUncontacted.length>3?' y '+(hotUncontacted.length-3)+' más':''}</div>
       </div>
-      <button class="btn-action" onclick="showView('leads');document.getElementById('sort-leads').value='score';renderLeads()" style="margin-left:auto;white-space:nowrap">Contactar -></button>
+      <button class="btn-action" onclick="dashboardBridge('urgent')" style="margin-left:auto;white-space:nowrap">Contactar -></button>
     </div>`;
   }
 
@@ -290,8 +442,17 @@ function renderRecentActivity() {
             <div class="activity-text">Email enviado a <strong>${e.company}</strong> — ${e.email}</div>
             <div class="activity-time">${new Date(e.date).toLocaleDateString('es-ES', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</div>
           </div>
-        </div>`).join('')
-    : '<p style="color:var(--text-muted);font-size:.83rem">Sin actividad reciente</p>';
+        </div>`).join('') + `
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.85rem">
+          <button class="btn-action" onclick="dashboardBridge('tracking')">Abrir seguimiento</button>
+          <button class="btn-action" onclick="dashboardBridge('pending')">Pendientes</button>
+          ${(Array.isArray(window.tempSearchResults) && window.tempSearchResults.length) ? '<button class="btn-action" onclick="dashboardBridge(\'results\')">Volver a resultados</button>' : ''}
+        </div>`
+    : `<p style="color:var(--text-muted);font-size:.83rem">Sin actividad reciente</p>
+       <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.85rem">
+         <button class="btn-action" onclick="dashboardBridge('search')">Lanzar búsqueda</button>
+         <button class="btn-action" onclick="dashboardBridge('pipeline')">Revisar pipeline</button>
+       </div>`;
 }
 
 // ============ KANBAN ============

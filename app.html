@@ -125,13 +125,31 @@
       <img id="logo-light" src="assets/logo-light.png" alt="Voltflow2" style="width:100%;max-width:200px;height:auto;display:none;margin:0 auto;">
       <img id="logo-dark"  src="assets/logo-dark.png"  alt="Voltflow2" style="width:100%;max-width:200px;height:auto;display:block;margin:0 auto;">
     </div>
-    <nav>
-      <div class="nav-group-label">PRINCIPAL</div>
+    <nav id="sidebar-nav" data-tour-id="nav-flow" data-tour-view="dashboard" data-tour-contexts="update,dashboard" data-tour-title="Navegación por flujo" data-tour-text="La app ahora agrupa las vistas por momento de trabajo: vista general, captación, gestión, seguimiento y sistema. La idea es que sepas dónde entrar según la tarea, no según el módulo." data-tour-manual="dashboard" data-tour-priority="10">
+      <div class="nav-group-label">VISTA GENERAL</div>
       <ul>
         <li class="active" data-view="dashboard" onclick="showView('dashboard')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-          Dashboard
+          Dashboard Operativo
         </li>
+      </ul>
+      <div class="nav-group-label">CAPTACIÓN</div>
+      <ul>
+        <li data-view="planner" onclick="showView('planner')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Buscar Empresas
+        </li>
+        <li data-view="coverage" onclick="showView('coverage')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          Cobertura
+        </li>
+        <li data-view="import" onclick="showView('import')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Importar Base de Datos
+        </li>
+      </ul>
+      <div class="nav-group-label">GESTIÓN</div>
+      <ul>
         <li data-view="leads" onclick="showView('leads')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Gestión de Leads
@@ -145,27 +163,12 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
           Mapa de Leads
         </li>
-      </ul>
-      <div class="nav-group-label">PROSPECCION</div>
-      <ul>
-        <li data-view="planner" onclick="showView('planner')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Buscar Empresas
-        </li>
-        <li data-view="coverage" onclick="showView('coverage')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-          Cobertura
-        </li>
-        <li data-view="import" onclick="showView('import')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Importar Base Datos
-        </li>
         <li data-view="campaigns" onclick="showView('campaigns')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           Campañas
         </li>
       </ul>
-      <div class="nav-group-label">ANÁLISIS</div>
+      <div class="nav-group-label">SEGUIMIENTO</div>
       <ul>
         <li data-view="tracking" onclick="showView('tracking')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -180,6 +183,9 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           Plantillas Email
         </li>
+      </ul>
+      <div class="nav-group-label">SISTEMA</div>
+      <ul>
         <li data-view="settings" onclick="showView('settings')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
           Configuración
@@ -221,6 +227,21 @@
       </div>
     </div>
 
+    <div class="glass-panel" id="dashboard-quick-actions" data-tour-id="dashboard-quick-actions-feature" data-tour-view="dashboard" data-tour-contexts="update,dashboard" data-tour-title="Acciones rápidas de trabajo diario" data-tour-text="Este bloque lleva directo a las cuatro acciones más repetidas: crear lead, buscar empresas, procesar respuestas y registrar interacciones. Menos navegación, más ejecución." data-tour-manual="dashboard" data-tour-priority="40" data-tour-practice-label="Abrir prospección" data-tour-practice-action="showView('planner')" style="margin-bottom:1rem;position:sticky;top:0;z-index:2">
+      <div class="panel-header" style="align-items:flex-start;gap:1rem;flex-wrap:wrap">
+        <div>
+          <h3>Acciones rápidas</h3>
+          <span style="font-size:.72rem;color:var(--text-muted)">Accesos directos para avanzar el flujo diario sin salir del panel</span>
+        </div>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+          <button class="btn-primary" onclick="showView('leads');toggleLeadForm()">+ Nuevo lead</button>
+          <button class="btn-outline" onclick="showView('planner')">Buscar empresas</button>
+          <button class="btn-outline" onclick="showView('inbox');document.getElementById('inbox-paste-area').focus()">Procesar respuestas</button>
+          <button class="btn-outline" onclick="openVoiceModal()">Registrar interacción</button>
+        </div>
+      </div>
+    </div>
+
     <!-- KPIs principales -->
     <div class="stats-grid">
       <div class="stat-card stat-blue">
@@ -251,7 +272,7 @@
       <div id="today-content" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem"></div>
     </div>
 
-    <div class="glass-panel" id="daily-copilot-panel" style="margin-top:1rem">
+    <div class="glass-panel" id="daily-copilot-panel" data-tour-id="daily-copilot-feature" data-tour-view="dashboard" data-tour-contexts="dashboard" data-tour-title="Copiloto diario" data-tour-text="El copiloto convierte tus leads y tareas en una agenda práctica para trabajar sin pensar por dónde empezar." data-tour-manual="dashboard" data-tour-priority="55" style="margin-top:1rem">
       <div class="panel-header">
         <div>
           <h3>Copiloto autonomo diario</h3>
@@ -268,12 +289,8 @@
     <!-- Alerta inteligente de scoring -->
     <div id="smart-alert" style="display:none;margin-bottom:1.5rem"></div>
 
-    <!-- Fila 1: Segmentos + Prioridad inteligente -->
+    <!-- Fila 1: Operativa inmediata -->
     <div class="dash-grid">
-      <div class="glass-panel">
-        <div class="panel-header"><h3>Leads por Segmento</h3></div>
-        <div id="segment-chart" class="segment-chart"></div>
-      </div>
       <div class="glass-panel">
         <div class="panel-header">
           <h3>Contactar Ahora</h3>
@@ -282,87 +299,89 @@
         <div id="top-leads-list"></div>
         <button class="btn-text" onclick="showView('leads')">Ver todos -></button>
       </div>
-    </div>
-
-    <!-- Fila 2: Métricas de negocio (Nivel 6) -->
-    <div class="dash-grid" style="margin-top:1.5rem">
-      <div class="glass-panel">
-        <div class="panel-header"><h3>Métricas de Conversión</h3></div>
-        <div id="conversion-metrics" style="display:grid;gap:.75rem;margin-top:.5rem"></div>
-      </div>
-      <div class="glass-panel">
-        <div class="panel-header"><h3>Rendimiento por Sector</h3></div>
-        <div id="sector-performance" style="display:grid;gap:.5rem;margin-top:.5rem"></div>
-      </div>
-    </div>
-
-    <!-- Fila 3: Embudo + Pipeline Value -->
-    <div class="dash-grid" style="margin-top:1.5rem">
-      <div class="glass-panel">
-        <div class="panel-header"><h3> Embudo de Conversión</h3></div>
-        <div id="funnel-chart" class="funnel-wrap"></div>
-      </div>
       <div class="glass-panel">
         <div class="panel-header">
-          <h3>Valor del Pipeline</h3>
-          <span style="font-size:.72rem;color:var(--text-muted)">Basado en presupuestos estimados</span>
-        </div>
-        <div id="pipeline-value-panel" style="margin-top:.5rem"></div>
-      </div>
-    </div>
-
-    <!-- Fila 4: Objetivos semanales + Racha -->
-    <div class="dash-grid" style="margin-top:1.5rem">
-      <div class="glass-panel">
-        <div class="panel-header">
-          <h3>Objetivos Semanales</h3>
+          <h3>Objetivos semanales</h3>
           <button class="btn-outline btn-sm" onclick="openObjectivesModal()">Editar</button>
         </div>
         <div id="objectives-panel" style="margin-top:.5rem"></div>
       </div>
+    </div>
+
+    <div class="dash-grid" style="margin-top:1.5rem">
       <div class="glass-panel">
         <div class="panel-header"><h3>Racha de Prospección</h3></div>
         <div id="streak-panel" style="margin-top:.5rem"></div>
         <div class="panel-header" style="margin-top:1rem"><h3>Actividad mensual</h3></div>
         <div id="heatmap-panel" style="margin-top:.5rem"></div>
       </div>
+      <div class="glass-panel">
+        <div class="panel-header"><h3>Actividad reciente</h3></div>
+        <div id="recent-activity"></div>
+      </div>
     </div>
 
-    <!-- Fila 5: Inteligencia competitiva (Nivel 4) -->
-    <div class="glass-panel" style="margin-top:1.5rem" id="intel-panel">
-      <div class="panel-header">
-        <h3>Inteligencia de Zona</h3>
-        <span style="font-size:.72rem;color:var(--text-muted)">Comparativa de leads vs media del sector</span>
+    <details class="glass-panel" id="dashboard-analysis-panel" style="margin-top:1.5rem;padding:0;overflow:hidden">
+      <summary style="list-style:none;cursor:pointer;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem">
+        <div>
+          <div style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)">Análisis</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--text)">Rendimiento, tendencias e inteligencia comercial</div>
+        </div>
+        <span style="font-size:.75rem;color:var(--text-muted)">Desplegar análisis</span>
+      </summary>
+      <div style="padding:0 1.25rem 1.25rem">
+        <div class="dash-grid">
+          <div class="glass-panel">
+            <div class="panel-header"><h3>Leads por Segmento</h3></div>
+            <div id="segment-chart" class="segment-chart"></div>
+          </div>
+          <div class="glass-panel">
+            <div class="panel-header"><h3>Métricas de Conversión</h3></div>
+            <div id="conversion-metrics" style="display:grid;gap:.75rem;margin-top:.5rem"></div>
+          </div>
+        </div>
+        <div class="dash-grid" style="margin-top:1.5rem">
+          <div class="glass-panel">
+            <div class="panel-header"><h3>Rendimiento por Sector</h3></div>
+            <div id="sector-performance" style="display:grid;gap:.5rem;margin-top:.5rem"></div>
+          </div>
+          <div class="glass-panel">
+            <div class="panel-header"><h3> Embudo de Conversión</h3></div>
+            <div id="funnel-chart" class="funnel-wrap"></div>
+          </div>
+        </div>
+        <div class="dash-grid" style="margin-top:1.5rem">
+          <div class="glass-panel">
+            <div class="panel-header">
+              <h3>Valor del Pipeline</h3>
+              <span style="font-size:.72rem;color:var(--text-muted)">Basado en presupuestos estimados</span>
+            </div>
+            <div id="pipeline-value-panel" style="margin-top:.5rem"></div>
+          </div>
+          <div class="glass-panel" id="intel-panel">
+            <div class="panel-header">
+              <h3>Inteligencia de Zona</h3>
+              <span style="font-size:.72rem;color:var(--text-muted)">Comparativa de leads vs media del sector</span>
+            </div>
+            <div id="intel-content" style="margin-top:.75rem"></div>
+          </div>
+        </div>
+        <div class="glass-panel" style="margin-top:1.5rem" id="signal-corr-panel">
+          <div class="panel-header">
+            <h3> Lo que funciona en tu mercado</h3>
+            <span style="font-size:.72rem;color:var(--text-muted)">Señales que predicen el cierre en tu historial real</span>
+          </div>
+          <div id="signal-corr-content" style="margin-top:.75rem"></div>
+        </div>
+        <div class="glass-panel" style="margin-top:1.5rem">
+          <div class="panel-header">
+            <h3>Leads Procesados por Día</h3>
+            <span style="font-size:.72rem;color:var(--text-muted)">Últimos 30 días - efectividad diaria</span>
+          </div>
+          <div id="daily-stats-panel" style="margin-top:.75rem"></div>
+        </div>
       </div>
-      <div id="intel-content" style="margin-top:.75rem"></div>
-    </div>
-
-    <!-- Fila 6: Señales que predicen el cierre (MEJORA 5) -->
-    <div class="glass-panel" style="margin-top:1.5rem" id="signal-corr-panel">
-      <div class="panel-header">
-        <h3> Lo que funciona en tu mercado</h3>
-        <span style="font-size:.72rem;color:var(--text-muted)">Señales que predicen el cierre en tu historial real</span>
-      </div>
-      <div id="signal-corr-content" style="margin-top:.75rem"></div>
-    </div>
-
-    <!-- Fila 7: Estadísticas diarias -->
-    <div class="glass-panel" style="margin-top:1.5rem">
-      <div class="panel-header">
-        <h3>Leads Procesados por Día</h3>
-        <span style="font-size:.72rem;color:var(--text-muted)">Últimos 30 días - efectividad diaria</span>
-      </div>
-      <div id="daily-stats-panel" style="margin-top:.75rem"></div>
-    </div>
-
-    <!-- Fila 8: Actividad reciente -->
-    <div class="glass-panel" style="margin-top:1.5rem">
-      <div class="panel-header">
-        <h3>Actividad Reciente</h3>
-        <a href="https://www.voltiummadrid.es/galer%c3%Ada" target="_blank" class="btn-outline btn-sm">Ver Galería</a>
-      </div>
-      <div id="recent-activity"></div>
-    </div>
+    </details>
   </section>
 
   <!-- ======================== LEADS ======================== -->
@@ -449,7 +468,7 @@
     </div>
 
     <!-- Filters + Search - Smart Filter System -->
-    <div id="leads-sf-bar" class="sf-bar">
+    <div id="leads-sf-bar" class="sf-bar" data-tour-id="leads-filters-feature" data-tour-view="leads" data-tour-contexts="update,leads" data-tour-title="Leads para trabajar rápido" data-tour-text="Búsqueda, orden, filtros y acciones masivas están pensados para operar sin fricción. La mejora UX aquí es velocidad: ver menos ruido y actuar más rápido sobre los contactos correctos." data-tour-manual="leads" data-tour-priority="100">
       <div class="sf-search-wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="lead-search" placeholder="Buscar empresa, email, notas, sector..." oninput="renderLeads(); sfUpdateChips('leads')">
@@ -560,8 +579,12 @@
       </table>
       <div id="leads-empty" class="empty-state" style="display:none">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-        <p>No hay leads que mostrar</p>
-        <button class="btn-primary" onclick="showView('planner')">Buscar empresas</button>
+        <p>No hay leads que mostrar todavía.</p>
+        <p style="font-size:.75rem;opacity:.7">Empieza captando nuevas empresas o crea un lead manual para activar el pipeline.</p>
+        <div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">
+          <button class="btn-primary" onclick="showView('planner')">Buscar empresas</button>
+          <button class="btn-outline" onclick="toggleLeadForm()">Crear lead manual</button>
+        </div>
       </div>
     </div>
   </section>
@@ -621,7 +644,7 @@
     </div>
     <div class="sf-chips" id="kanban-sf-chips"></div>
 
-        <div class="kanban-board" id="kanban-board">
+        <div class="kanban-board" id="kanban-board" data-tour-id="kanban-pipeline-feature" data-tour-view="kanban" data-tour-contexts="update,kanban" data-tour-title="Pipeline accionable" data-tour-text="El pipeline ya no es solo visual. Sirve para priorizar, mover oportunidades y detectar seguimientos vencidos según la fase en la que está cada lead." data-tour-manual="leads" data-tour-priority="110">
       <div class="kanban-col" id="col-Pendiente" ondragover="event.preventDefault()" ondrop="dropLead(event,'Pendiente')">
         <div class="kanban-col-header kanban-orange">
           <span>Pendiente</span><span class="kanban-count" id="cnt-Pendiente">0</span><span class="kanban-col-value" id="val-Pendiente"></span>
@@ -702,7 +725,7 @@
 
     <!-- Barra de búsqueda -->
     <div class="glass-panel" style="margin-bottom:1.5rem">
-      <div class="search-engine-bar">
+      <div class="search-engine-bar" id="search-console-bar" data-tour-id="search-console-feature" data-tour-view="planner" data-tour-contexts="update,planner" data-tour-title="Consola de prospección" data-tour-text="Toda la búsqueda se concentra aquí: sector, CP o zona, radio, volumen y enriquecimiento. Es la nueva entrada única para lanzar scraping con menos pasos y más control." data-tour-manual="search" data-tour-priority="60">
         <div class="input-group" style="flex:1;min-width:160px">
           <label>Sector</label>
           <select id="plan-segment" onchange="renderPlan()"></select>
@@ -748,7 +771,7 @@
           </button>
         </div>
       </div>
-      <div id="multi-sector-toolbar" style="margin-top:.9rem;padding:.8rem .9rem;border:1px solid var(--glass-border);border-radius:10px;background:rgba(255,255,255,.03)">
+      <div id="multi-sector-toolbar" data-tour-id="multi-search-feature" data-tour-view="planner" data-tour-contexts="update,planner" data-tour-title="Multibúsqueda por territorio" data-tour-text="Si quieres explotar un mismo CP o zona en varios sectores, ya no hace falta repetir búsquedas una a una. Esta opción acelera la captación y deja rastro en Cobertura." data-tour-manual="search" data-tour-priority="70" style="margin-top:.9rem;padding:.8rem .9rem;border:1px solid var(--glass-border);border-radius:10px;background:rgba(255,255,255,.03)">
         <label style="display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--text);cursor:pointer">
           <input type="checkbox" id="plan-multi-toggle" onchange="toggleMultiSectorSearch(this.checked)" style="accent-color:var(--primary)">
           Buscar varios sectores en el mismo CP/zona
@@ -1202,7 +1225,8 @@
         <div id="campaigns-list" class="campaigns-grid"></div>
     <div id="campaigns-empty" class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-      <p>No hay campañas activas</p>
+      <p>No hay campañas activas en este momento.</p>
+      <p style="font-size:.75rem;opacity:.7">El siguiente paso es agrupar leads y lanzar una campaña para generar respuestas medibles.</p>
       <button class="btn-primary" onclick="openCampaignModal()">Crear primera campaña</button>
     </div>
   </section>
@@ -1280,7 +1304,12 @@
         <tbody id="tracking-body"></tbody>
       </table>
       <div id="tracking-empty" class="empty-state" style="display:none">
-        <p>No hay emails enviados aún</p>
+        <p>Aún no hay seguimiento registrado.</p>
+        <p style="font-size:.75rem;opacity:.7">Cuando envíes campañas o registres interacciones, aquí verás qué conversaciones necesitan respuesta.</p>
+        <div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">
+          <button class="btn-primary" onclick="showView('campaigns')">Ir a campañas</button>
+          <button class="btn-outline" onclick="openVoiceModal()">Registrar interacción</button>
+        </div>
       </div>
     </div>
   </section>
@@ -1305,7 +1334,7 @@
         <h3>Pegar emails</h3>
         <span style="font-size:.72rem;color:var(--text-muted)">Selecciona varios emails en Outlook -> Ctrl+A -> Ctrl+C -> pega aquí</span>
       </div>
-      <textarea id="inbox-paste-area"
+      <textarea id="inbox-paste-area" data-tour-id="inbox-responses-feature" data-tour-view="inbox" data-tour-contexts="update,inbox" data-tour-title="Respuestas que vuelven al CRM" data-tour-text="La bandeja convierte emails pegados desde Outlook en actualizaciones del CRM. La novedad clave es que el seguimiento puede entrar en el sistema sin registrar cada respuesta a mano." data-tour-manual="workflow" data-tour-priority="130" data-tour-practice-label="Abrir bandeja" data-tour-practice-action="showView('inbox');document.getElementById('inbox-paste-area')?.focus()"
         rows="10"
         placeholder="Pega aquí el contenido de los emails recibidos de Outlook...
 
@@ -1349,8 +1378,9 @@ Y cruzará los remitentes con tus leads para actualizar el CRM."
     <!-- Empty state -->
     <div id="inbox-empty-state" class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 13 16 13 14 16 10 16 8 13 2 13"/><path d="M5.45 5.11L2 13v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-7.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-      <p>Pega emails de Outlook para detectar respuestas de tus leads</p>
-      <p style="font-size:.75rem;opacity:.6">En Outlook: selecciona emails -> Ctrl+A -> Ctrl+C -> pega arriba</p>
+      <p>La bandeja está lista para procesar respuestas.</p>
+      <p style="font-size:.75rem;opacity:.6">Siguiente paso: copia uno o varios emails desde Outlook, pégalos arriba y usa "Procesar con IA" para vincularlos al CRM.</p>
+      <button class="btn-outline" onclick="document.getElementById('inbox-paste-area').focus()">Pegar emails ahora</button>
     </div>
   </section>
 
@@ -2492,6 +2522,7 @@ Y cruzará los remitentes con tus leads para actualizar el CRM."
   })();
 </script>
 <script defer src="modules/state.js?v=2026.06.04.0320" charset="UTF-8"></script>
+<script defer src="modules/tour-registry.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/email-templates.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/scoring.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/init.js?v=2026.06.04.0320" charset="UTF-8"></script>

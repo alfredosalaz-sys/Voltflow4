@@ -98,6 +98,98 @@
     return { sector, location, results: results.length, complete, withEmail, pending, overdue, view: getActiveView(), hasMission };
   }
 
+  function formatRelativeMoment(value) {
+    if (!value) return 'sin registro';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'sin registro';
+    const diffMin = Math.round((Date.now() - date.getTime()) / 60000);
+    if (diffMin < 1) return 'ahora';
+    if (diffMin < 60) return `hace ${diffMin} min`;
+    const diffHours = Math.round(diffMin / 60);
+    if (diffHours < 24) return `hace ${diffHours} h`;
+    const diffDays = Math.round(diffHours / 24);
+    if (diffDays < 8) return `hace ${diffDays} d`;
+    return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+  }
+
+  function safeReadJson(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function getOperationalStatusData() {
+    const summary = typeof window.getLocalRecoverySummary === 'function'
+      ? window.getLocalRecoverySummary()
+      : {
+          leads: getLeads().length,
+          emails: safeReadJson('gordi_email_history', []).length,
+          campaigns: safeReadJson('gordi_campaigns', []).length,
+          searches: safeReadJson('gordi_search_history', []).length + safeReadJson('gordi_saved_searches', []).length,
+          origin: location.origin && location.origin !== 'null' ? location.origin : 'este navegador'
+        };
+    const leads = getLeads().filter(lead => !lead.archived);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const overdue = leads.filter(lead => {
+      if (!lead.next_contact) return false;
+      const next = new Date(lead.next_contact);
+      next.setHours(0, 0, 0, 0);
+      return next < today && lead.status !== 'Cerrado';
+    }).length;
+    const pending = leads.filter(lead => !lead.status || lead.status === 'Pendiente').length;
+    const selectedResults = getResults().filter(item => item && item._selectedForImport !== false).length;
+    const safetySnapshots = typeof window.readSafetySnapshots === 'function' ? window.readSafetySnapshots() : safeReadJson('gordi_safety_snapshots', []);
+    const rescueSnapshots = typeof window.readCriticalRescues === 'function' ? window.readCriticalRescues() : safeReadJson('gordi_critical_rescue_snapshots', []);
+    const diskBackupStatus = safeReadJson('gordi_disk_backup_last_status', null);
+    const leadSources = leads.reduce((acc, lead) => {
+      const key = lead.source || 'manual';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const primarySource = Object.entries(leadSources).sort((a, b) => b[1] - a[1])[0];
+    const sync = [];
+    if (localStorage.getItem('gordi_gh_token')) {
+      sync.push({
+        label: 'GitHub',
+        mode: localStorage.getItem('gordi_gh_auto') === 'true' ? 'auto' : 'manual',
+        push: localStorage.getItem('gordi_gh_last_push'),
+        pull: localStorage.getItem('gordi_gh_last_pull')
+      });
+    }
+    if (localStorage.getItem('gordi_jsonbin_bin')) {
+      sync.push({
+        label: 'JSONBin',
+        mode: localStorage.getItem('gordi_jsonbin_auto') === 'true' ? 'auto' : 'manual',
+        push: localStorage.getItem('gordi_jsonbin_last_push'),
+        pull: null
+      });
+    }
+    if (localStorage.getItem('gordi_sheets_id')) {
+      sync.push({
+        label: 'Sheets',
+        mode: 'manual',
+        push: localStorage.getItem('gordi_sheets_last_sync'),
+        pull: null
+      });
+    }
+    return {
+      summary,
+      pending,
+      overdue,
+      selectedResults,
+      lastSaved: localStorage.getItem('gordi_local_last_modified'),
+      safetySnapshots,
+      rescueSnapshots,
+      diskBackupStatus,
+      sync,
+      primarySource
+    };
+  }
+
   function getMissionAction(data) {
     if (data.view === 'coverage') return { label: 'Buscar pendiente', view: 'planner', icon: 'search' };
     if (data.view === 'planner' && data.results) return { label: 'Importar completos', fn: 'importSelectedSearch', icon: 'lead' };
@@ -128,6 +220,64 @@
     if (main) main.prepend(bar);
     else document.body.prepend(bar);
     return bar;
+  }
+
+  function ensureOpsStatusLayer() {
+    let layer = qs('ops-status-layer');
+    if (layer) return layer;
+    layer = document.createElement('section');
+    layer.id = 'ops-status-layer';
+    layer.className = 'ops-status-layer ui-panel';
+    const main = document.querySelector('main');
+    const anchor = qs('mission-bar') || qs('workflow-mission-bar');
+    if (anchor?.parentNode) anchor.insertAdjacentElement('afterend', layer);
+    else if (main) main.prepend(layer);
+    else document.body.prepend(layer);
+    return layer;
+  }
+
+  function renderOpsStatusLayer() {
+    const layer = ensureOpsStatusLayer();
+    if (!layer) return;
+    const data = getOperationalStatusData();
+    const syncHtml = data.sync.length
+      ? data.sync.map(item => `<span class="state-chip ${item.mode === 'auto' ? 'state-success' : 'state-info'}">${esc(item.label)} ${esc(item.mode)} · ${esc(formatRelativeMoment(item.push || item.pull))}</span>`).join('')
+      : '<span class="state-chip state-warning">Sin sync cloud activo</span>';
+    const diskStatus = data.diskBackupStatus?.status || (localStorage.getItem('gordi_disk_backup_enabled') === 'true' ? 'activo' : 'sin carpeta');
+    const diskDetail = data.diskBackupStatus?.detail || localStorage.getItem('gordi_disk_backup_last_file') || 'Backup local no configurado';
+    const primarySource = data.primarySource ? `${data.primarySource[0]} · ${data.primarySource[1]} leads` : 'manual';
+    layer.innerHTML = `
+      <div style="display:grid;grid-template-columns:minmax(220px,1.5fr) minmax(220px,1.2fr) minmax(220px,1.1fr);gap:.8rem;align-items:start">
+        <div style="display:grid;gap:.32rem">
+          <span class="mission-kicker">Confianza operativa</span>
+          <strong style="font-size:1rem">${data.summary.leads} leads · ${data.summary.emails || 0} emails · ${data.summary.campaigns || 0} campañas</strong>
+          <span style="font-size:.78rem;color:var(--text-muted)">Guardado local ${esc(formatRelativeMoment(data.lastSaved))} · origen visible ${esc(data.summary.origin || 'este navegador')}</span>
+          <span style="font-size:.72rem;color:var(--text-dim)">Fuente dominante: ${esc(primarySource)}</span>
+        </div>
+        <div style="display:grid;gap:.45rem">
+          <strong style="font-size:.78rem;color:var(--text-muted)">Sync y copias</strong>
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap">${syncHtml}</div>
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+            <span class="state-chip state-info">${data.safetySnapshots.length} snapshots</span>
+            <span class="state-chip ${data.rescueSnapshots.length ? 'state-success' : 'state-warning'}">${data.rescueSnapshots.length} rescates</span>
+            <span class="state-chip ${diskStatus === 'success' || diskStatus === 'already_exists' ? 'state-success' : 'state-warning'}">Backup disco · ${esc(diskStatus)}</span>
+          </div>
+          <span style="font-size:.72rem;color:var(--text-dim)">${esc(diskDetail)}</span>
+        </div>
+        <div style="display:grid;gap:.45rem">
+          <strong style="font-size:.78rem;color:var(--text-muted)">Pendiente ahora</strong>
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+            <button type="button" class="state-chip state-warning" onclick="dashboardBridge && dashboardBridge('pending')">${data.pending} pendientes</button>
+            <button type="button" class="state-chip ${data.overdue ? 'state-warning' : 'state-success'}" onclick="dashboardBridge && dashboardBridge('overdue')">${data.overdue} vencidos</button>
+            <button type="button" class="state-chip ${data.selectedResults ? 'state-info' : 'state-muted'}" onclick="dashboardBridge && dashboardBridge('${data.selectedResults ? 'results' : 'search'}')">${data.selectedResults} resultados listos</button>
+          </div>
+          <div style="display:flex;gap:.45rem;flex-wrap:wrap">
+            <button type="button" class="btn-secondary btn-sm" onclick="showView && showView('settings')">Datos</button>
+            <button type="button" class="btn-secondary btn-sm" onclick="showStorageDiagnostics && showStorageDiagnostics()">Diagnostico</button>
+            ${data.safetySnapshots.length ? '<button type="button" class="btn-secondary btn-sm" onclick="openSafetySnapshotsModal && openSafetySnapshotsModal()">Snapshots</button>' : ''}
+          </div>
+        </div>
+      </div>`;
   }
 
   function renderMissionBar() {
@@ -194,16 +344,18 @@
     }
     const data = getMissionData();
     const newLeads = getLeads().filter(l => l.source === 'search' || l.origin === 'search').length;
+    const resultsAction = data.results ? "dashboardBridge && dashboardBridge('results')" : "dashboardBridge && dashboardBridge('search')";
+    const importAction = data.results ? "dashboardBridge && dashboardBridge('results')" : "showView && showView('planner')";
     deck.innerHTML = `
-      ${renderCommandCard('Que buscar ahora', data.location ? `${data.location} - ${data.sector || 'Sector pendiente'}` : 'Elige CP/zona y sector', 'Abrir prospeccion', 'planner', 'search', 'info')}
-      ${renderCommandCard('Que importar', `${data.results} resultados - ${data.complete} completos`, 'Ver resultados', 'planner', 'lead', data.results ? 'success' : 'muted')}
-      ${renderCommandCard('A quien contactar', `${data.pending} leads pendientes - ${data.overdue} vencidos`, 'Gestionar leads', 'leads', 'mail', data.overdue ? 'warning' : 'info')}
-      ${renderCommandCard('Donde avanzar', `${newLeads} leads desde scraping`, 'Mapa comercial', 'map', 'map', 'muted')}
+      ${renderCommandCard('Que buscar ahora', data.location ? `${data.location} - ${data.sector || 'Sector pendiente'}` : 'Elige CP/zona y sector', 'Abrir prospeccion', "dashboardBridge && dashboardBridge('search')", 'search', 'info')}
+      ${renderCommandCard('Que importar', `${data.results} resultados - ${data.complete} completos`, data.results ? 'Ir a resultados' : 'Preparar busqueda', resultsAction, 'lead', data.results ? 'success' : 'muted')}
+      ${renderCommandCard('A quien contactar', `${data.pending} leads pendientes - ${data.overdue} vencidos`, 'Gestionar leads', "dashboardBridge && dashboardBridge('urgent')", 'mail', data.overdue ? 'warning' : 'info')}
+      ${renderCommandCard('Donde avanzar', `${newLeads} leads desde scraping`, data.results ? 'Cruzar con resultados' : 'Mapa comercial', data.results ? importAction : "showView && showView('map')", 'map', 'muted')}
     `;
   }
 
-  function renderCommandCard(title, value, action, view, icon, tone) {
-    return `<button class="visual-command-card ${tone || 'muted'}" type="button" onclick="showView && showView('${view}')"><span class="ui-icon">${ICONS[icon] || ICONS.arrow}</span><span><em>${esc(title)}</em><strong>${esc(value)}</strong><small>${esc(action)}</small></span></button>`;
+  function renderCommandCard(title, value, action, handler, icon, tone) {
+    return `<button class="visual-command-card ${tone || 'muted'}" type="button" onclick="${handler}"><span class="ui-icon">${ICONS[icon] || ICONS.arrow}</span><span><em>${esc(title)}</em><strong>${esc(value)}</strong><small>${esc(action)}</small></span></button>`;
   }
 
   function renderResultsDecisionBar() {
@@ -237,6 +389,7 @@
         <button class="btn-secondary btn-sm" onclick="openTriageMode && openTriageMode()">Triage rapido</button>
         <button class="btn-secondary btn-sm" onclick="openDuplicateCenter && openDuplicateCenter()">Duplicados</button>
         <button class="btn-secondary btn-sm" onclick="filterResults && filterResults('email', event.currentTarget)">Filtrar con email</button>
+        <button class="btn-secondary btn-sm" onclick="dashboardBridge && dashboardBridge('search-leads')">Leads importados</button>
         <button class="btn-primary btn-sm" onclick="importSelectedSearch && importSelectedSearch()">Importar seleccionadas</button>
       </div>`;
   }
@@ -497,7 +650,58 @@
     document.querySelectorAll('.glass-panel').forEach(panel => panel.classList.add('ui-panel'));
   }
 
+  function registerVisualTourFeatures() {
+    if (typeof window.registerTourFeature !== 'function') return;
+    window.registerTourFeature({
+      id: 'ops-status-layer-feature',
+      view: 'dashboard',
+      contexts: ['update', 'dashboard'],
+      selector: '#ops-status-layer',
+      title: 'Confianza operativa visible',
+      text: 'Este bloque resume guardado local, origen visible, sync, snapshots, rescates y pendientes. Antes de trabajar, aquí puedes comprobar si todo está sano sin entrar en Configuración.',
+      manual: 'dashboard',
+      topic: 'opsStatus',
+      priority: 20
+    });
+    window.registerTourFeature({
+      id: 'mission-active-feature',
+      view: 'dashboard',
+      contexts: ['update', 'dashboard'],
+      selector: '#workflow-mission-bar, #mission-bar',
+      title: 'Misión activa',
+      text: 'La app mantiene visible la búsqueda o zona sobre la que estás trabajando y te enlaza al siguiente paso útil. Ya no tienes que recordar manualmente en qué punto del flujo estabas.',
+      manual: 'dashboard',
+      topic: 'mission',
+      modules: ['workflow'],
+      priority: 30
+    });
+    window.registerTourFeature({
+      id: 'visual-command-deck-feature',
+      view: 'dashboard',
+      contexts: ['update', 'dashboard'],
+      selector: '#visual-command-deck',
+      title: 'Decisiones guiadas desde el dashboard',
+      text: 'El dashboard ya no es solo un panel de métricas. Responde a cuatro preguntas reales: qué buscar, qué importar, a quién contactar y dónde avanzar.',
+      manual: 'dashboard',
+      topic: 'commandCenter',
+      priority: 50
+    });
+    window.registerTourFeature({
+      id: 'result-decision-bar-feature',
+      view: 'planner',
+      contexts: ['update', 'planner'],
+      selector: '#search-results-panel, #result-decision-bar',
+      title: 'Resultados para decidir mejor',
+      text: 'Los resultados ya no son solo una lista. Aquí puedes revisar calidad, filtrar por datos útiles y decidir qué merece entrar en Leads para importar mejor, no solo más.',
+      manual: 'search',
+      topic: 'resultDecision',
+      requiresResults: true,
+      priority: 80
+    });
+  }
+
   function refreshVisualSystem() {
+    renderOpsStatusLayer();
     renderMissionBar();
     renderDashboardCommandDeck();
     decorateSearchConsole();
@@ -542,6 +746,7 @@
   }
 
   function bootVisualSystem() {
+    registerVisualTourFeatures();
     wrapRender('renderSearchResults');
     wrapRender('applyAdvancedFilters');
     wrapRender('renderCoverage');
@@ -551,6 +756,7 @@
     wrapBusy('searchBusinessesMultiSector', 'Ejecutando multibusqueda...');
     wrapBusy('importSelectedSearch', 'Importando a Leads...');
     ['change', 'input', 'click', 'gordi:flow'].forEach(type => document.addEventListener(type, () => setTimeout(refreshVisualSystem, 80), true));
+    document.addEventListener('gordi:view-changed', () => setTimeout(refreshVisualSystem, 40));
     document.addEventListener('input', event => {
       if (event.target?.id === 'global-search-input') setTimeout(() => renderCommandPalette(event.target.value), 30);
     }, true);

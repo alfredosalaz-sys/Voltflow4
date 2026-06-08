@@ -6,7 +6,7 @@
   window.__gordiHelpSystemBooted = true;
 
   const HELP_BUILD = window.GORDI_APP_BUILD || '2026.06.04.0320';
-  const UPDATE_TOUR_REVISION = `${HELP_BUILD}:tour-2026-06-05-filter-flow`;
+  const UPDATE_TOUR_REVISION = `${HELP_BUILD}:tour-2026-06-08-ux-clarity-flow`;
   const COVERAGE_TOUR_REVISION = `${HELP_BUILD}:coverage-2026-06-05`;
   const COVERAGE_TOUR_KEY = 'gordi_coverage_update_tour';
   const UPDATE_TOUR_KEY = 'gordi_professional_update_tour';
@@ -22,21 +22,27 @@
   let tourRenderToken = 0;
 
   const TOPICS = {
-    dashboard: 'Panel principal. Resume leads, prioridad, actividad y la siguiente accion recomendada para trabajar sin perder tiempo.',
-    commandCenter: 'Centro de mando diario. Decide la siguiente accion conectando cobertura, scraping y leads: continuar mision, importar resultados o revisar pipeline.',
+    dashboard: 'Panel principal. Ahora arranca como centro operativo: orienta, prioriza y conecta las acciones mas utiles del dia sin obligarte a recorrer toda la app.',
+    mission: 'Mision activa. Mantiene visible el contexto comercial: que zona o busqueda esta abierta y cual es el siguiente paso recomendado dentro del flujo.',
+    opsStatus: 'Confianza operativa. Resume guardado local, origen visible, sync activos, snapshots, rescates y pendientes para que sepas si puedes trabajar con tranquilidad.',
+    commandCenter: 'Centro de mando diario. Resume prioridades reales y conecta dashboard, cobertura, scraping y leads para decidir la siguiente accion util.',
+    quickActions: 'Acciones rapidas. Son los cuatro accesos directos del trabajo diario: crear lead, buscar empresas, procesar respuestas y registrar interacciones.',
     dailyCopilot: 'Copiloto diario. Genera una agenda practica con tareas de seguimiento, leads prioritarios y acciones de ventas basadas en tus datos.',
-    search: 'Buscador inteligente. Introduce sector, zona o codigo postal y radio. Usa Google Places y enriquecimiento web para encontrar empresas reales.',
+    search: 'Buscador inteligente. Es la consola principal de prospeccion: define sector, zona, radio, volumen y enriquecimiento antes de lanzar una busqueda util.',
+    searchConsole: 'Consola de prospeccion. Reune en un unico bloque la configuracion de la busqueda para trabajar por territorio sin perder tiempo en pasos dispersos.',
     searchControls: 'Controles de scraping. Sector y zona definen que se busca; radio y resultados controlan alcance; enriquecer decide cuanta informacion se intenta rescatar.',
     multiSearch: 'Multibúsqueda. Permite lanzar varios sectores en la misma zona o codigo postal y registrar cobertura por cada CP/sector trabajado.',
-    results: 'Resultados de scraping. Revisa empresas encontradas, selecciona las utiles y vuelcalas a leads. El sistema evita duplicados y prioriza las que tienen datos de contacto.',
-    postScraping: 'Cierre post-scraping. Selecciona automaticamente resultados utiles, crea campana o importa leads recomendados sin repetir trabajo.',
-    leads: 'Gestion de leads. Aqui se trabajan contactos ya importados: estado, score, siguiente contacto, emails, notas y trazabilidad de origen.',
-    leadOrigin: 'Origen real del lead. Muestra cuantos leads mantienen CP/sector de procedencia para conectar scraping, cobertura y pipeline.',
+    results: 'Resultados de scraping. Ya no son solo una lista: puedes revisar calidad, detectar duplicados, filtrar mejor y decidir que merece entrar en Leads.',
+    resultDecision: 'Decision de resultados. Resume completas, alta confianza, duplicados y seleccionadas para que importes mejor y no solo mas.',
+    postScraping: 'Cierre post-scraping. Propone el siguiente paso tras una busqueda: revisar, importar, excluir duplicados o continuar el flujo comercial.',
+    leads: 'Gestion de leads. Aqui se trabajan contactos ya importados: estado, score, siguiente contacto, emails, notas, acciones masivas y trazabilidad de origen.',
+    leadOrigin: 'Origen real del lead. Resume cuantos leads mantienen CP y sector trazables para conectar captacion, cobertura y pipeline.',
     coverage: 'Cobertura. Controla que codigos postales y sectores ya buscaste, cuando, que salio bien y que queda pendiente.',
     coverageSearch: 'Buscador de cobertura. Escribe un CP para ver si ya se busco y que sectores estan completos, pendientes o con error.',
     coverageFunnel: 'Embudo por CP/sector. Compara encontrados, importados a leads y contactados para saber que zonas producen oportunidades reales.',
-    map: 'Mapa operativo. Las chinchetas muestran cobertura por CP: completo, parcial, pendiente o con errores. Sirve para decidir donde buscar despues.',
-    settings: 'Configuracion. Guarda perfil, API keys y opciones de datos. Las claves se conservan en este navegador/origen local.',
+    map: 'Mapa operativo. Combina leads y cobertura para entender el territorio trabajado, las zonas pendientes y la calidad del avance por CP.',
+    inbox: 'Bandeja de respuestas. Convierte emails pegados desde Outlook en actualizaciones del CRM para no registrar respuestas a mano.',
+    settings: 'Configuracion. Guarda perfil, API keys y opciones de datos, y ahora tambien concentra salud del sistema, restauracion y continuidad operativa.',
     health: 'Centro de salud. Comprueba build, datos locales, API keys, backups y eventos recientes sin borrar tu trabajo.',
     restore: 'Backups inteligentes. Crea puntos antes de búsquedas, importaciones y campanas para poder restaurar el estado anterior.',
     chat: 'Asistente. Puede explicar cualquier pestaña, diagnosticar APIs, guiar scraping, interpretar cobertura, priorizar leads y resolver dudas de flujo.'
@@ -127,6 +133,47 @@
     return !!getContextSeen()[`${view}:${UPDATE_TOUR_REVISION}`];
   }
 
+  function mergeTourSteps(primary, fallback) {
+    const map = new Map();
+    (primary || []).forEach(step => {
+      if (!step) return;
+      const key = step.id || `${step.view || ''}:${step.selector || ''}:${step.title || ''}`;
+      map.set(key, step);
+    });
+    (fallback || []).forEach(step => {
+      if (!step) return;
+      const key = step.id || `${step.view || ''}:${step.selector || ''}:${step.title || ''}`;
+      if (!map.has(key)) map.set(key, step);
+    });
+    return Array.from(map.values());
+  }
+
+  function getRegistryTourSteps(context) {
+    try {
+      if (typeof window.getRegisteredTourFeatures !== 'function') return [];
+      return window.getRegisteredTourFeatures({ context });
+    } catch {
+      return [];
+    }
+  }
+
+  function getUpdateTourSignature(steps) {
+    const fromRegistry = typeof window.getTourRegistrySignature === 'function'
+      ? window.getTourRegistrySignature('update')
+      : '';
+    if (fromRegistry) return fromRegistry;
+    return (steps || []).map(step => step.id || `${step.view || ''}:${step.selector || ''}:${step.title || ''}`).join('|');
+  }
+
+  function getSeenUpdateFeatureIds() {
+    try {
+      const data = JSON.parse(localStorage.getItem(UPDATE_TOUR_KEY) || 'null');
+      return Array.isArray(data?.seenFeatureIds) ? data.seenFeatureIds : [];
+    } catch {
+      return [];
+    }
+  }
+
   function addIcon(target, topic, mode) {
     if (!target || !topic || applied.has(target)) return;
     const text = TOPICS[topic] || topic;
@@ -171,12 +218,17 @@
   function getTopicTitle(topic) {
     const titles = {
       dashboard: 'Panel de control',
+      mission: 'Mision activa',
+      opsStatus: 'Confianza operativa',
       commandCenter: 'Centro de mando',
+      quickActions: 'Acciones rapidas',
       dailyCopilot: 'Copiloto diario',
       search: 'Buscador',
+      searchConsole: 'Consola de prospeccion',
       searchControls: 'Controles de búsqueda',
       multiSearch: 'Multibúsqueda',
       results: 'Resultados',
+      resultDecision: 'Decision de resultados',
       postScraping: 'Cierre post-scraping',
       leads: 'Gestion de leads',
       leadOrigin: 'Origen de leads',
@@ -184,6 +236,7 @@
       coverageSearch: 'Buscar CP',
       coverageFunnel: 'Embudo CP/sector',
       map: 'Mapa operativo',
+      inbox: 'Bandeja de respuestas',
       settings: 'Configuracion',
       health: 'Salud del sistema',
       restore: 'Backups',
@@ -240,6 +293,8 @@
 
   function addHelpToStaticUi() {
     addIcon(document.querySelector('#dashboard-view .page-header h1'), 'dashboard');
+    addIcon(document.querySelector('#dashboard-quick-actions .panel-header h3'), 'quickActions');
+    addIcon(document.querySelector('#dashboard-analysis-panel summary'), 'dashboard');
     addIcon(document.querySelector('#daily-copilot-panel .panel-header h3'), 'dailyCopilot');
     addIcon(document.querySelector('#planner-view .page-header h1'), 'search');
     addIcon(document.querySelector('#planner-view .search-engine-bar'), 'searchControls', 'prepend');
@@ -247,13 +302,18 @@
     addIcon(document.querySelector('#leads-view .page-header h1'), 'leads');
     addIcon(document.querySelector('#coverage-view .page-header h1'), 'coverage');
     addIcon(document.querySelector('#map-view .map-command-panel strong'), 'map');
+    addIcon(document.querySelector('#inbox-view .page-header h1'), 'inbox');
     addIcon(document.querySelector('#settings-view .page-header h1'), 'settings');
     addIcon(document.querySelector('#chat-window .chat-header-info strong'), 'chat');
   }
 
   function addHelpToDynamicUi() {
+    addIcon(document.querySelector('#workflow-mission-bar .mission-context strong, #mission-bar .mission-context strong'), 'mission');
+    addIcon(document.querySelector('#ops-status-layer strong'), 'opsStatus');
+    addIcon(document.querySelector('#visual-command-deck'), 'commandCenter');
     addIcon(document.querySelector('#workflow-command-center .ops-header h3'), 'commandCenter');
     addIcon(document.querySelector('#workflow-post-scraping-panel .ops-header h3'), 'postScraping');
+    addIcon(document.querySelector('#result-decision-bar > div strong'), 'resultDecision');
     addIcon(document.querySelector('#workflow-coverage-funnel-board .ops-header h3'), 'coverageFunnel');
     addIcon(document.querySelector('#workflow-lead-origin-summary .ops-header h3'), 'leadOrigin');
     addIcon(document.querySelector('#workflow-system-health .ops-header h3'), 'health');
@@ -601,28 +661,30 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     {
       id: 'dashboard',
       title: 'Dashboard',
-      intro: 'El Dashboard es el punto de entrada diario. Su mision es decirte que hacer a continuacion sin tener que revisar toda la aplicacion manualmente.',
+      intro: 'El Dashboard es el punto de entrada diario. Ahora combina contexto, confianza operativa, accesos rapidos y decisiones guiadas para que sepas que hacer a continuacion sin recorrer toda la aplicacion.',
       points: [
-        'El Centro de mando diario cruza leads, cobertura, búsquedas pendientes y resultados listos.',
-        'El boton Ejecutar siguiente intenta llevarte al punto mas util del flujo: continuar una mision, buscar una celda pendiente o importar resultados.',
-        'Los KPIs resumen leads, cobertura, pendientes CP/sector, resultados listos y alta prioridad.',
-        'El Copiloto diario genera una agenda comercial con tareas concretas para el dia.',
-        'Las secciones de conversion y rendimiento ayudan a detectar que sectores producen mejores oportunidades.'
+        'La mision activa mantiene visible la busqueda o zona sobre la que estas trabajando y enlaza con el siguiente paso util.',
+        'La capa de confianza operativa resume guardado local, origen visible, sync, snapshots, rescates y pendientes.',
+        'Las acciones rapidas llevan a crear lead, buscar empresas, procesar respuestas y registrar interacciones sin rodeos.',
+        'El tablero visual de decisiones responde a cuatro preguntas: que buscar, que importar, a quien contactar y donde avanzar.',
+        'El Centro de mando diario y el Copiloto convierten el dashboard en una mesa de trabajo, no solo en un panel de metricas.',
+        'El bloque de Analisis queda separado para consultar rendimiento sin mezclarlo con la operativa inmediata.'
       ],
       tips: 'Usalo al empezar la jornada. Si no sabes por donde seguir, el Dashboard debe darte la siguiente accion.'
     },
     {
       id: 'search',
       title: 'Buscar Empresas',
-      intro: 'Buscar Empresas es el motor de scraping. Permite buscar empresas reales por sector y CP/zona, enriquecer datos y preparar leads utiles.',
+      intro: 'Buscar Empresas es la consola de prospeccion. Permite buscar empresas reales por sector y CP/zona, enriquecer datos y preparar leads utiles sin romper el flujo.',
       points: [
+        'La consola de prospeccion reune sector, territorio, radio, volumen y enriquecimiento en un solo bloque visible.',
         'Sector define el tipo de empresa que quieres encontrar.',
         'Ciudad, zona o CP define el territorio de búsqueda. Para trabajar ordenado, usa codigos postales concretos.',
-        'Radio controla el alcance. Un radio pequeno es mas preciso; uno grande encuentra mas empresas pero puede mezclar zonas.',
+        'Radio controla el alcance. Un radio pequeño es mas preciso; uno grande encuentra mas empresas pero puede mezclar zonas.',
         'Resultados limita cuantas empresas se intentan rescatar.',
         'Enriquecimiento decide si se intenta completar web, email, telefono y datos adicionales.',
         'La multibúsqueda permite lanzar varios sectores sobre el mismo CP/zona y registrar cobertura por cada sector.',
-        'Despues del scraping, el cierre post-scraping detecta resultados utiles, duplicados y contactos listos para Leads.'
+        'Despues del scraping, la barra de decision y el cierre post-scraping ayudan a filtrar, detectar duplicados y pasar a Leads con mas criterio.'
       ],
       tips: 'Para trabajar profesionalmente, usa CP + sector, revisa resultados, importa recomendados y mira Cobertura antes de repetir.'
     },
@@ -671,13 +733,14 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     {
       id: 'settings',
       title: 'Configuracion y datos',
-      intro: 'Configuracion controla perfil, API keys, backups y salud del sistema. Es la zona que protege la continuidad de trabajo.',
+      intro: 'Configuracion controla perfil, API keys, backups y salud del sistema. Es la zona que protege la continuidad de trabajo y la recuperacion ante problemas.',
       points: [
         'Las API keys permiten Google Places, enriquecimiento, IA y servicios externos.',
         'Los datos se guardan en localStorage del mismo navegador y mismo origen.',
         'Si abres desde otro navegador, otro perfil o otra URL, puede parecer que los datos desaparecieron.',
-        'Los backups y puntos de restauracion permiten proteger leads, cobertura, historial y claves antes de cambios importantes.',
-        'La salud del sistema muestra build, origen, datos locales y posibles problemas de configuracion.'
+        'La salud del sistema muestra build, origen, datos locales, sync y posibles problemas de configuracion.',
+        'Los backups, snapshots y puntos de restauracion permiten proteger leads, cobertura, historial y claves antes de cambios importantes.',
+        'La idea no es entrar aqui a diario, sino tener una capa clara de continuidad cuando algo falle o antes de actualizar.'
       ],
       tips: 'Antes de publicar o actualizar, confirma build alineado y no cambies el origen desde el que el usuario abre la app.'
     }
@@ -736,108 +799,130 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   const UPDATE_TOUR_STEPS = [
     {
       view: 'dashboard',
-      selector: '#dashboard-view',
-      title: 'Carga bajo demanda',
-      text: 'Chat, ayuda y backup en disco ya no bloquean el arranque. Se cargan cuando los necesitas o durante periodos de inactividad.',
+      selector: '#sidebar nav',
+      title: 'Navegacion por flujo',
+      text: 'La app ahora agrupa las vistas por momento de trabajo: vista general, captacion, gestion, seguimiento y sistema. La idea es que sepas donde entrar segun la tarea, no segun el modulo.',
       manual: 'dashboard'
     },
     {
       view: 'dashboard',
-      selector: '#dashboard-view',
-      title: 'Arranque mas ligero',
-      text: 'Esta version carga menos paneles ocultos al abrir la app. El Dashboard aparece antes y las secciones pesadas se preparan cuando las necesitas.',
+      selector: '#ops-status-layer',
+      title: 'Confianza operativa visible',
+      text: 'Este bloque resume guardado local, origen visible, sync, snapshots, rescates y pendientes. Antes de trabajar, aqui puedes comprobar si todo esta sano sin entrar en Configuracion.',
       manual: 'dashboard'
     },
     {
       view: 'dashboard',
       modules: ['workflow'],
-      selector: '#workflow-command-center',
-      title: 'Dashboard: centro de mando diario',
-      text: 'La novedad principal es que el panel ya no solo muestra datos: te propone la siguiente accion entre cobertura, scraping y leads.',
+      selector: '#workflow-mission-bar, #mission-bar',
+      title: 'Mision activa',
+      text: 'La app mantiene visible la busqueda o zona sobre la que estas trabajando y te enlaza al siguiente paso util. Ya no tienes que recordar manualmente en que punto del flujo estabas.',
       manual: 'dashboard'
     },
     {
       view: 'dashboard',
-      selector: '#daily-copilot-panel',
-      title: 'Dashboard: agenda comercial',
-      text: 'El copiloto diario convierte tus leads y tareas en una lista practica para trabajar sin pensar por donde empezar.',
+      selector: '#dashboard-quick-actions',
+      title: 'Acciones rapidas de trabajo diario',
+      text: 'Este bloque lleva directo a las cuatro acciones mas repetidas: crear lead, buscar empresas, procesar respuestas y registrar interacciones. Menos navegacion, mas ejecucion.',
+      manual: 'dashboard',
+      practice: { label: 'Abrir prospeccion', action: "showView('planner')" }
+    },
+    {
+      view: 'dashboard',
+      modules: ['workflow'],
+      selector: '#visual-command-deck, #workflow-command-center',
+      title: 'Decisiones guiadas desde el dashboard',
+      text: 'El dashboard ya no es solo un panel de metricas. Responde a cuatro preguntas reales: que buscar, que importar, a quien contactar y donde avanzar.',
       manual: 'dashboard'
     },
     {
       view: 'planner',
-      selector: '#planner-view .search-engine-bar',
-      title: 'Buscar Empresas: búsqueda guiada',
-      text: 'Sector, CP/zona, radio, resultados y enriquecimiento quedan en una sola barra para lanzar scraping con precision.',
+      selector: '#planner-view .search-console-title, #planner-view .search-engine-bar',
+      title: 'Consola de prospeccion',
+      text: 'Toda la busqueda se concentra aqui: sector, CP o zona, radio, volumen y enriquecimiento. Es la nueva entrada unica para lanzar scraping con menos pasos y mas control.',
       manual: 'search'
     },
     {
       view: 'planner',
       selector: '#multi-sector-toolbar label, #multi-sector-toolbar',
-      title: 'Buscar Empresas: multibúsqueda',
-      text: 'Ahora puedes buscar varios sectores en el mismo CP o zona y registrar cada sector en Cobertura automaticamente.',
+      title: 'Multibusqueda por territorio',
+      text: 'Si quieres explotar un mismo CP o zona en varios sectores, ya no hace falta repetir busquedas una a una. Esta opcion acelera la captacion y deja rastro en Cobertura.',
       manual: 'search'
     },
     {
       view: 'planner',
       modules: ['workflow'],
-      selector: '#workflow-post-scraping-panel, #search-results-panel',
-      title: 'Buscar Empresas: cierre post-scraping',
-      text: 'Cuando haya resultados, la herramienta detecta utiles, duplicados y contactos listos para volcar a Leads.',
+      selector: '#search-results-panel, #result-decision-bar',
+      title: 'Resultados para decidir mejor',
+      text: 'Los resultados ya no son solo una lista. Aqui puedes revisar calidad, filtrar por datos utiles y decidir que merece entrar en Leads para importar mejor, no solo mas.',
       manual: 'search',
       requiresResults: true
     },
     {
       view: 'planner',
-      selector: '#search-sf-wrap, #search-results-panel',
-      title: 'Resultados: filtros combinables',
-      text: 'Los resultados del scraping ahora se pueden ordenar y filtrar por email, telefono, direccion, web, contacto completo, no importados y varias condiciones a la vez.',
+      selector: '#workflow-post-scraping-panel, #result-decision-bar',
+      title: 'Cierre post-scraping',
+      text: 'Tras una busqueda, la app resume completas, alta confianza, duplicados y seleccionadas. Desde aqui puedes hacer triage rapido, abrir duplicados o importar lo que ya esta listo.',
       manual: 'search',
       practice: { label: 'Abrir filtros', action: "showView('planner');document.getElementById('search-sf-panel')?.classList.add('open')" },
-      release: 'filter-flow',
-      requiresResults: true
-    },
-    {
-      view: 'planner',
-      selector: '#search-workflow-panel, #search-results-panel',
-      title: 'Resultados: siguiente mejor accion',
-      text: 'Tras filtrar, la herramienta resume la calidad visible y propone que hacer: volcar completos, enriquecer visibles, exportar o crear campana con los resultados filtrados.',
-      manual: 'search',
-      practice: { label: 'Ver acciones visibles', action: "showView('planner');document.getElementById('search-workflow-panel')?.scrollIntoView({block:'center'})" },
-      release: 'filter-flow',
+      release: 'ux-flow',
       requiresResults: true
     },
     {
       view: 'leads',
       modules: ['workflow'],
       selector: '#workflow-lead-origin-summary',
-      title: 'Leads: origen real del contacto',
-      text: 'Los leads importados desde scraping conservan CP y sector, para saber de donde vienen y volver a Cobertura cuando haga falta.',
+      title: 'Origen trazable del lead',
+      text: 'Los leads importados desde scraping pueden conservar CP y sector reales. Asi puedes entender de donde funciona mejor la captacion y volver a Cobertura cuando haga falta.',
       manual: 'leads'
     },
     {
       view: 'leads',
       selector: '#leads-sf-bar',
-      title: 'Leads: filtros mas rapidos',
-      text: 'La gestion de leads tiene búsqueda, orden y filtros para trabajar solo los contactos que importan en ese momento.',
+      title: 'Leads para trabajar rapido',
+      text: 'Busqueda, orden, filtros y acciones masivas estan pensados para operar sin friccion. La mejora UX aqui es velocidad: ver menos ruido y actuar mas rapido sobre los contactos correctos.',
+      manual: 'leads'
+    },
+    {
+      view: 'kanban',
+      selector: '#kanban-board',
+      title: 'Pipeline accionable',
+      text: 'El pipeline ya no es solo visual. Sirve para priorizar, mover oportunidades y detectar seguimientos vencidos segun la fase en la que esta cada lead.',
       manual: 'leads'
     },
     {
       view: 'map',
       modules: ['inbox'],
       before: () => { if (typeof setMapMode === 'function') setMapMode('leads'); },
-      selector: '#map-view .map-command-panel',
-      title: 'Mapa: modo operativo',
-      text: 'El mapa ya no es solo una vista: permite alternar entre leads y cobertura para entender el territorio trabajado.',
+      selector: '#workflow-map-brief, #map-view .map-command-panel',
+      title: 'Mapa como panel territorial',
+      text: 'El mapa combina contexto y accion. Aqui puedes ver cuantos CP o sectores estan completos, parciales o con error antes de decidir donde avanzar.',
       manual: 'map'
     },
     {
       view: 'map',
       modules: ['coverage', 'inbox'],
       before: () => { if (typeof setMapMode === 'function') setMapMode('coverage'); },
-      selector: '#map-mode-coverage, #leads-map',
-      title: 'Mapa: cobertura por colores',
-      text: 'El modo Cobertura muestra CP buscados, parciales, pendientes o con errores para decidir la siguiente zona.',
+      selector: '#map-legend .map-action-legend, #map-mode-coverage',
+      title: 'Cobertura por colores',
+      text: 'La leyenda explica si una zona esta trabajada, por completar, pendiente o para revisar. No hace falta interpretar el mapa a ojo para decidir la siguiente zona.',
       manual: 'map'
+    },
+    {
+      view: 'inbox',
+      selector: '#inbox-paste-area',
+      title: 'Respuestas que vuelven al CRM',
+      text: 'La bandeja convierte emails pegados desde Outlook en actualizaciones del CRM. La novedad clave es que el seguimiento puede entrar en el sistema sin registrar cada respuesta a mano.',
+      manual: 'workflow',
+      practice: { label: 'Abrir bandeja', action: "showView('inbox');document.getElementById('inbox-paste-area')?.focus()" }
+    },
+    {
+      view: 'settings',
+      modules: ['workflow'],
+      selector: '#workflow-system-health, #workflow-restore-panel',
+      title: 'Continuidad y recuperacion',
+      text: 'Configuracion ya no solo guarda claves. Tambien centraliza salud del sistema, snapshots, rescates y puntos de restauracion para trabajar con mas seguridad.',
+      manual: 'settings'
     }
   ];
 
@@ -858,25 +943,36 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
       },
       {
         view: 'settings',
-        selector: '#disk-backup-status, #tour-settings-panel',
+        modules: ['workflow'],
+        selector: '#workflow-system-health, #workflow-restore-panel',
         title: 'Continuidad de datos',
-        text: 'Ajustes tambien protege API keys, backups, snapshots y diagnosticos para que una actualizacion no haga perder trabajo.',
+        text: 'Ajustes tambien protege API keys, backups, snapshots, rescates y diagnosticos para que una actualizacion no haga perder trabajo.',
         manual: 'settings'
       }
     ]
   };
 
+  function getUpdateTourSteps() {
+    const registry = getRegistryTourSteps('update');
+    return registry.length ? registry : UPDATE_TOUR_STEPS;
+  }
+
+  function getContextTourSteps(view) {
+    if (view === 'coverage') return COVERAGE_TOUR_STEPS;
+    const registry = getRegistryTourSteps(view);
+    if (registry.length) return registry;
+    return CONTEXT_TOUR_STEPS[view] || [];
+  }
+
   function getAdaptiveUpdateSteps() {
     const hasResults = Array.isArray(window.tempSearchResults) && window.tempSearchResults.length > 0;
-    let previousSeen = null;
-    try { previousSeen = JSON.parse(localStorage.getItem(UPDATE_TOUR_KEY) || 'null'); } catch {}
-    const onlyLatestChanges = previousSeen && previousSeen.revision && previousSeen.revision !== UPDATE_TOUR_REVISION;
-    const base = onlyLatestChanges
-      ? UPDATE_TOUR_STEPS.filter(step => step.release === 'filter-flow')
-      : UPDATE_TOUR_STEPS;
+    const allSteps = getUpdateTourSteps();
+    const seenIds = new Set(getSeenUpdateFeatureIds());
+    const unseenSteps = allSteps.filter(step => step.id && !seenIds.has(step.id));
+    const base = unseenSteps.length ? unseenSteps : allSteps;
     const adaptive = base.filter(step => hasResults || !step.requiresResults);
     if (adaptive.length) return adaptive;
-    return UPDATE_TOUR_STEPS.filter(step => !step.requiresResults);
+    return allSteps.filter(step => !step.requiresResults);
   }
 
   function getTourPreview(step) {
@@ -886,14 +982,14 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   }
 
   function runTourPracticeAction(tourKind = activeTourKind, index = 0) {
-    const steps = activeTourSteps || (tourKind === 'coverage' ? COVERAGE_TOUR_STEPS : UPDATE_TOUR_STEPS);
+    const steps = activeTourSteps || (tourKind === 'coverage' ? COVERAGE_TOUR_STEPS : getUpdateTourSteps());
     const step = steps[index];
     if (!step?.practice?.action) return;
     try { new Function(step.practice.action)(); } catch (err) { console.warn('[tour] practica no ejecutada', err); }
   }
 
   function tourNeedsHelp(tourKind = activeTourKind, index = 0) {
-    const steps = activeTourSteps || (tourKind === 'coverage' ? COVERAGE_TOUR_STEPS : UPDATE_TOUR_STEPS);
+    const steps = activeTourSteps || (tourKind === 'coverage' ? COVERAGE_TOUR_STEPS : getUpdateTourSteps());
     const step = steps[index] || {};
     openAppManual(step.manual || step.view || 'workflow');
     const prompt = `Explícame esta parte del tour: ${step.title || 'paso'} - ${step.text || ''}`;
@@ -904,7 +1000,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   }
 
   function showTourChecklist(kind = activeTourKind || 'update') {
-    const steps = activeTourSteps || (kind === 'coverage' ? COVERAGE_TOUR_STEPS : UPDATE_TOUR_STEPS);
+    const steps = activeTourSteps || (kind === 'coverage' ? COVERAGE_TOUR_STEPS : getUpdateTourSteps());
     let modal = document.getElementById('tour-checklist-modal');
     if (!modal) {
       modal = document.createElement('div');
@@ -933,12 +1029,12 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     const progress = getTourProgress();
     return [
       { id: 'update', title: 'Novedades pendientes', desc: 'Solo lo nuevo de esta revision.', action: "startUpdateTour(true)", done: !!progress.update?.completed },
-      { id: 'dashboard', title: 'Dashboard', desc: 'Centro diario y copiloto.', action: "startContextTour('dashboard', true)", done: hasContextSeen('dashboard') },
-      { id: 'planner', title: 'Scraping y filtros', desc: 'Busqueda, multisector y resultados filtrables.', action: "startContextTour('planner', true)", done: hasContextSeen('planner') },
+      { id: 'dashboard', title: 'Dashboard', desc: 'Mision activa, confianza operativa y acciones rapidas.', action: "startContextTour('dashboard', true)", done: hasContextSeen('dashboard') },
+      { id: 'planner', title: 'Scraping y decision', desc: 'Consola de prospeccion, resultados y cierre post-scraping.', action: "startContextTour('planner', true)", done: hasContextSeen('planner') },
       { id: 'coverage', title: 'Cobertura', desc: 'CP, sectores, pendientes y mapa.', action: "startCoverageTour(true)", done: !!progress.coverage?.completed },
-      { id: 'leads', title: 'Gestion de Leads', desc: 'Origen, filtros y pipeline.', action: "startContextTour('leads', true)", done: hasContextSeen('leads') },
-      { id: 'map', title: 'Mapa operativo', desc: 'Leads y cobertura visual.', action: "startContextTour('map', true)", done: hasContextSeen('map') },
-      { id: 'settings', title: 'Ajustes y datos', desc: 'Backups, API keys, tours y manual.', action: "startContextTour('settings', true)", done: hasContextSeen('settings') },
+      { id: 'leads', title: 'Gestion de Leads', desc: 'Origen trazable, filtros y trabajo masivo.', action: "startContextTour('leads', true)", done: hasContextSeen('leads') },
+      { id: 'map', title: 'Mapa operativo', desc: 'Territorio, colores y contexto comercial.', action: "startContextTour('map', true)", done: hasContextSeen('map') },
+      { id: 'settings', title: 'Ajustes y datos', desc: 'Salud del sistema, recuperacion y manual.', action: "startContextTour('settings', true)", done: hasContextSeen('settings') },
     ];
   }
 
@@ -992,21 +1088,36 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     el.innerHTML = `${done}/${catalog.length} recorridos vistos · Revision ${esc(UPDATE_TOUR_REVISION.split(':').pop())}`;
   }
 
+  async function preloadTourContext(view, includeUpdateFlow = false) {
+    if (typeof ensureGordiModule !== 'function') return;
+    const modules = [];
+    if (includeUpdateFlow) modules.push('workflow', 'coverage', 'inbox');
+    if (view === 'dashboard') modules.push('workflow');
+    if (view === 'planner') modules.push('workflow');
+    if (view === 'leads') modules.push('workflow');
+    if (view === 'map') modules.push('workflow', 'coverage', 'inbox');
+    if (view === 'settings') modules.push('workflow');
+    if (!modules.length) return;
+    await Promise.all(uniq(modules).map(ensureTourModule));
+  }
+
   function startContextTour(view, force = false) {
     if (!force && hasContextSeen(view)) return;
-    const steps = CONTEXT_TOUR_STEPS[view] || [];
-    if (!steps.length) return;
     if (activeTour) {
       if (!force) return;
       closeUpdateTour(false);
       closeCoverageTour(false);
     }
-    activeTourSteps = steps;
-    activeTourKind = `context:${view}`;
-    sessionStorage.setItem(`gordi_context_tour_started_${view}`, '1');
     waitUntilNoBlockingModal(() => {
-      activeTour = 'update';
-      setTimeout(() => renderUpdateTourStep(0), 180);
+      preloadTourContext(view).finally(() => {
+        const steps = getContextTourSteps(view);
+        if (!steps.length) return;
+        activeTourSteps = steps;
+        activeTourKind = `context:${view}`;
+        sessionStorage.setItem(`gordi_context_tour_started_${view}`, '1');
+        activeTour = 'update';
+        setTimeout(() => renderUpdateTourStep(0), 180);
+      });
     });
   }
 
@@ -1023,6 +1134,9 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     if (typeof step?.before === 'function') {
       try { step.before(); } catch {}
     }
+    if (typeof step?.beforeAction === 'string' && step.beforeAction.trim()) {
+      try { new Function(step.beforeAction)(); } catch {}
+    }
   }
 
   function startUpdateTour(force = false) {
@@ -1033,11 +1147,13 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     if (!force && hasSeenUpdateTour()) return;
     if (document.hidden && !force) return;
     waitUntilNoBlockingModal(() => {
-      if (document.hidden && !force) return;
-      activeTour = 'update';
-      activeTourKind = 'update';
-      activeTourSteps = getAdaptiveUpdateSteps();
-      setTimeout(() => renderUpdateTourStep(0), 260);
+      preloadTourContext('', true).finally(() => {
+        if (document.hidden && !force) return;
+        activeTour = 'update';
+        activeTourKind = 'update';
+        activeTourSteps = getAdaptiveUpdateSteps();
+        setTimeout(() => renderUpdateTourStep(0), 260);
+      });
     });
   }
 
@@ -1068,7 +1184,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   }
 
   async function renderUpdateTourStep(index) {
-    const steps = activeTourSteps || UPDATE_TOUR_STEPS;
+    const steps = activeTourSteps || getUpdateTourSteps();
     if (activeTour !== 'update' || !steps.length) return;
     const renderToken = ++tourRenderToken;
     const safeIndex = Math.max(0, Math.min(index, steps.length - 1));
@@ -1143,18 +1259,34 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   function hasSeenUpdateTour() {
     try {
       const data = JSON.parse(localStorage.getItem(UPDATE_TOUR_KEY) || 'null');
-      return !!data && data.feature === 'professional_update_tour' && data.revision === UPDATE_TOUR_REVISION && data.completed;
+      if (!data || data.feature !== 'professional_update_tour' || !data.completed) return false;
+      const steps = getUpdateTourSteps();
+      const signature = getUpdateTourSignature(steps);
+      const seenIds = new Set(Array.isArray(data.seenFeatureIds) ? data.seenFeatureIds : []);
+      const visiblePending = getAdaptiveUpdateSteps().some(step => step.id && !seenIds.has(step.id));
+      if (visiblePending) return false;
+      if (signature && data.signature && data.signature !== signature) {
+        return steps.every(step => !step.id || seenIds.has(step.id));
+      }
+      return steps.every(step => !step.id || seenIds.has(step.id));
     } catch {
       return false;
     }
   }
 
   function saveUpdateTourSeen(completed) {
+    const steps = activeTourKind === 'update' ? (activeTourSteps || getUpdateTourSteps()) : getUpdateTourSteps();
+    const ids = uniq([
+      ...getSeenUpdateFeatureIds(),
+      ...steps.map(step => step && step.id).filter(Boolean)
+    ]);
     localStorage.setItem(UPDATE_TOUR_KEY, JSON.stringify({
       feature: 'professional_update_tour',
       version: getHelpAppVersion(),
       build: HELP_BUILD,
       revision: UPDATE_TOUR_REVISION,
+      signature: getUpdateTourSignature(steps),
+      seenFeatureIds: ids,
       completed: !!completed,
       seenAt: new Date().toISOString()
     }));
@@ -1225,7 +1357,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     const originalShowView = window.showView;
     window.showView = function (view) {
       const result = originalShowView.apply(this, arguments);
-      if (CONTEXT_TOUR_STEPS[view] && !hasContextSeen(view) && !sessionStorage.getItem(`gordi_context_tour_started_${view}`)) {
+      if (getContextTourSteps(view).length && !hasContextSeen(view) && !sessionStorage.getItem(`gordi_context_tour_started_${view}`)) {
         setTimeout(() => {
           if (!activeTour && !document.hidden && !sessionStorage.getItem(`gordi_context_tour_snoozed_${view}`)) {
             startContextTour(view, false);

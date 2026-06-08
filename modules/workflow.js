@@ -767,6 +767,86 @@
     wrapFunction('setMapMode', null, () => setTimeout(renderMapBrief, 60));
   }
 
+  function registerWorkflowTourFeatures() {
+    if (typeof window.registerTourFeature !== 'function') return;
+    window.registerTourFeature({
+      id: 'workflow-command-center-feature',
+      view: 'dashboard',
+      contexts: ['update', 'dashboard'],
+      selector: '#workflow-command-center',
+      title: 'Centro de mando diario',
+      text: 'Este panel resume tu día con datos reales: leads, cobertura, resultados listos y prioridades. Úsalo como punto de arranque para decidir si hoy toca buscar, importar o contactar.',
+      manual: 'dashboard',
+      topic: 'commandCenter',
+      modules: ['workflow'],
+      priority: 52
+    });
+    window.registerTourFeature({
+      id: 'workflow-post-scraping-feature',
+      view: 'planner',
+      contexts: ['update', 'planner'],
+      selector: '#workflow-post-scraping-panel, #result-decision-bar',
+      title: 'Cierre post-scraping',
+      text: 'Tras una búsqueda, la app resume completas, alta confianza, duplicados y seleccionadas. Desde aquí puedes hacer triage rápido, abrir duplicados o importar lo que ya está listo.',
+      manual: 'search',
+      topic: 'postScraping',
+      modules: ['workflow'],
+      requiresResults: true,
+      priority: 90,
+      practice: { label: 'Abrir filtros', action: "showView('planner');document.getElementById('search-sf-panel')?.classList.add('open')" }
+    });
+    window.registerTourFeature({
+      id: 'workflow-lead-origin-feature',
+      view: 'leads',
+      contexts: ['update', 'leads'],
+      selector: '#workflow-lead-origin-summary',
+      title: 'Origen trazable del lead',
+      text: 'Los leads importados desde scraping pueden conservar CP y sector reales. Así puedes entender de dónde funciona mejor la captación y volver a Cobertura cuando haga falta.',
+      manual: 'leads',
+      topic: 'leadOrigin',
+      modules: ['workflow'],
+      priority: 95
+    });
+    window.registerTourFeature({
+      id: 'workflow-map-brief-feature',
+      view: 'map',
+      contexts: ['update', 'map'],
+      selector: '#workflow-map-brief, #map-view .map-command-panel',
+      title: 'Mapa como panel territorial',
+      text: 'El mapa combina contexto y acción. Aquí puedes ver cuántos CP o sectores están completos, parciales o con error antes de decidir dónde avanzar.',
+      manual: 'map',
+      topic: 'map',
+      modules: ['workflow'],
+      before: function () { if (typeof setMapMode === 'function') setMapMode('leads'); },
+      priority: 120
+    });
+    window.registerTourFeature({
+      id: 'workflow-map-legend-feature',
+      view: 'map',
+      contexts: ['update', 'map'],
+      selector: '#map-legend .map-action-legend, #map-mode-coverage',
+      title: 'Cobertura por colores',
+      text: 'La leyenda explica si una zona está trabajada, por completar, pendiente o para revisar. No hace falta interpretar el mapa a ojo para decidir la siguiente zona.',
+      manual: 'map',
+      topic: 'map',
+      modules: ['workflow', 'coverage', 'inbox'],
+      before: function () { if (typeof setMapMode === 'function') setMapMode('coverage'); },
+      priority: 125
+    });
+    window.registerTourFeature({
+      id: 'workflow-system-health-feature',
+      view: 'settings',
+      contexts: ['update', 'settings'],
+      selector: '#workflow-system-health, #workflow-restore-panel',
+      title: 'Continuidad y recuperación',
+      text: 'Configuración ya no solo guarda claves. También centraliza salud del sistema, snapshots, rescates y puntos de restauración para trabajar con más seguridad.',
+      manual: 'settings',
+      topic: 'health',
+      modules: ['workflow'],
+      priority: 140
+    });
+  }
+
   window.addEventListener('error', event => {
     logAudit('browser_error', event.message || 'error');
     if (workflowBooted) scheduleWorkflowPanels(250);
@@ -795,6 +875,7 @@
   window.renderWorkflowPanels = renderWorkflowPanels;
 
   function bootWorkflow() {
+    registerWorkflowTourFeatures();
     ensureWorkflowPanels();
     installWrappers();
     workflowBooted = true;

@@ -397,9 +397,22 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     return token === tourRenderToken && activeTour === expectedTour;
   }
 
-  function waitUntilNoBlockingModal(callback, tries = 0) {
-    const blocking = [...document.querySelectorAll('.modal-overlay, .coverage-modal, .ops-modal-overlay, #tutorial-overlay')]
+  function getBlockingTourModal() {
+    return [...document.querySelectorAll([
+      '.modal-overlay',
+      '.coverage-modal',
+      '.ops-modal-overlay',
+      '.app-manual-modal',
+      '#tutorial-overlay',
+      '#import-modal-overlay',
+      '#reply-modal-overlay',
+      '#drawer-backdrop'
+    ].join(','))]
       .find(isTourElementVisible);
+  }
+
+  function waitUntilNoBlockingModal(callback, tries = 0) {
+    const blocking = getBlockingTourModal();
     if (!blocking) return callback();
     if (tries > 20) {
       setTimeout(() => waitUntilNoBlockingModal(callback, 0), 8000);
@@ -411,7 +424,9 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
   function startCoverageTour(force = false) {
     if (activeTour && activeTour !== 'coverage') return;
     if (!force && hasSeenCoverageTour()) return;
+    if (document.hidden && !force) return;
     waitUntilNoBlockingModal(() => {
+      if (document.hidden && !force) return;
       activeTour = 'coverage';
       activeTourKind = 'coverage';
       activeTourSteps = COVERAGE_TOUR_STEPS;
@@ -1016,7 +1031,9 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
       closeCoverageTour(false);
     }
     if (!force && hasSeenUpdateTour()) return;
+    if (document.hidden && !force) return;
     waitUntilNoBlockingModal(() => {
+      if (document.hidden && !force) return;
       activeTour = 'update';
       activeTourKind = 'update';
       activeTourSteps = getAdaptiveUpdateSteps();
@@ -1157,6 +1174,7 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
       updateShouldStart: !hasSeenUpdateTour() && !sessionStorage.getItem('gordi_professional_update_tour_snoozed'),
       coverageShouldStart: hasSeenUpdateTour() && !hasSeenCoverageTour() && !sessionStorage.getItem('gordi_coverage_update_tour_snoozed'),
       activeTour,
+      blockingModal: !!getBlockingTourModal(),
       helpLoaded: true,
     };
   }
@@ -1235,7 +1253,13 @@ MANUAL OPERATIVO ACTUAL DE LA APP, BUILD ${HELP_BUILD}:
     });
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
-        document.getElementById('app-manual-modal')?.remove();
+        const manual = document.getElementById('app-manual-modal');
+        if (manual) {
+          manual.remove();
+          return;
+        }
+        document.getElementById('tour-center-modal')?.remove();
+        document.getElementById('tour-checklist-modal')?.remove();
         if (activeTour === 'update') snoozeUpdateTour();
         else if (activeTour === 'coverage') snoozeCoverageTour();
       }

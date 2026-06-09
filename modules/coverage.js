@@ -856,7 +856,9 @@ function showCoverageMissionResults() {
   } else if (mission.resultSearchId) {
     loadCoverageSearchById(mission.resultSearchId);
   } else {
-    loadCoverageSearch(encodeURIComponent(mission.location), encodeURIComponent(mission.sector || mission.sectors?.[0] || ''));
+    if (typeof renderSearchCards === 'function') renderSearchCards();
+    if (typeof showResultsPanel === 'function') showResultsPanel();
+    renderCoveragePostScrapingPanel();
   }
 }
 
@@ -910,7 +912,15 @@ function runNextCoverageMissionStep() {
     runCoverageSearch(encodeURIComponent(mission.location), encodeURIComponent(mission.sector || mission.sectors?.[0] || ''));
     return;
   }
-  if (mission.status === 'scraping') {
+  if (mission.status === 'scraping' || mission.status === 'review') {
+    showCoverageMissionResults();
+    return;
+  }
+  if (mission.status === 'empty' || mission.status === 'error') {
+    showCoverageMissionResults();
+    return;
+  }
+  if (mission.status === 'import') {
     coverageImportRecommended();
     return;
   }
@@ -1797,6 +1807,7 @@ function runCoverageSearch(encodedLocation, encodedSector, force = false) {
   showView('planner');
   setTimeout(() => {
     if (typeof searchBusinesses === 'function') {
+      window.__gordiBypassRepeatPreflight = true;
       coverageBypassRepeatWarning = true;
       searchBusinesses();
     }
@@ -1892,7 +1903,7 @@ function showCoverageIntentRepeatWarning(intent, matches) {
     </div>
     <div class="coverage-modal-actions">
       <button class="btn-outline" onclick="showView('coverage');this.closest('.coverage-modal').remove()">Ver cobertura</button>
-      <button class="btn-primary" onclick="coverageBypassRepeatWarning=true;searchBusinesses();this.closest('.coverage-modal').remove()">Buscar igualmente</button>
+      <button class="btn-primary" onclick="window.__gordiBypassRepeatPreflight=true;coverageBypassRepeatWarning=true;searchBusinesses();this.closest('.coverage-modal').remove()">Buscar igualmente</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
@@ -1902,8 +1913,9 @@ function installCoverageSearchPreflight() {
   if (typeof searchBusinesses !== 'function' || searchBusinesses._coveragePreflight) return false;
   const original = searchBusinesses;
   searchBusinesses = function(...args) {
-    if (coverageBypassRepeatWarning) {
+    if (coverageBypassRepeatWarning || window.__gordiBypassRepeatPreflight) {
       coverageBypassRepeatWarning = false;
+      window.__gordiBypassRepeatPreflight = false;
       return original.apply(this, args);
     }
     const intent = getCoverageCurrentIntent();
@@ -1913,7 +1925,7 @@ function installCoverageSearchPreflight() {
       return Promise.resolve(false);
     }
     ensureCoverageMissionFromIntent(intent);
-    updateCoverageMission({ status: 'scraping' });
+    updateCoverageMission({ status: 'scraping', lastSearchStatus: 'running' });
     return original.apply(this, args);
   };
   searchBusinesses._coveragePreflight = true;
@@ -1928,10 +1940,20 @@ function getCoverageResultStats() {
   return { total: results.length, ready, duplicates, recommended };
 }
 
+function resolveCoverageSearchStage(mission, stats) {
+  const current = mission?.status || 'coverage';
+  const lastSearchStatus = mission?.lastSearchStatus || '';
+  if (['leads', 'import', 'followup'].includes(current)) return current;
+  if (lastSearchStatus === 'error') return 'error';
+  if (stats.total > 0) return 'review';
+  if (lastSearchStatus === 'empty') return 'empty';
+  return current === 'scraping' ? 'empty' : current;
+}
+
 function renderCoveragePostScrapingPanel() {
   const mission = getCoverageActiveMission();
   const panel = document.getElementById('search-results-panel');
-  if (!panel || !mission || !Array.isArray(tempSearchResults) || !tempSearchResults.length) return;
+  if (!panel || !mission || !Array.isArray(tempSearchResults)) return;
   let box = document.getElementById('coverage-post-scraping');
   if (!box) {
     box = document.createElement('div');
@@ -1941,20 +1963,30 @@ function renderCoveragePostScrapingPanel() {
     else panel.prepend(box);
   }
   const stats = getCoverageResultStats();
+  const stage = resolveCoverageSearchStage(mission, stats);
   updateCoverageMission({
-    status: 'scraping',
+    status: stage,
+    lastSearchStatus: mission.lastSearchStatus || (stats.total ? 'complete' : 'empty'),
     searchedCount: stats.total,
     readyCount: stats.ready,
     duplicateCount: stats.duplicates,
   });
+  const summary = mission.lastSearchStatus === 'error'
+    ? 'La ultima ejecucion fallo o agoto las consultas. Revisa la clave, la cuota o vuelve a lanzar la busqueda.'
+    : stats.total
+      ? `${stats.total} empresas encontradas · ${stats.ready} listas · ${stats.duplicates} duplicadas · ${stats.recommended} recomendadas para Leads`
+      : 'Sin resultados en esta busqueda. Puedes ampliar radio, reintentar o cerrar la mision.';
+  const primaryAction = stats.total
+    ? `<button class="btn-primary btn-sm" onclick="coverageImportRecommended()">Importar recomendadas</button>`
+    : `<button class="btn-primary btn-sm" onclick="runCoverageSearch('${encodeURIComponent(mission.location || '')}','${encodeURIComponent(mission.sector || mission.sectors?.[0] || '')}',true)">Reintentar</button>`;
   box.className = 'coverage-post-scraping';
   box.innerHTML = `
     <div>
       <strong>${coverageEscapeHtml(mission.label)} · cierre de scraping</strong>
-      <span>${stats.total} empresas encontradas · ${stats.ready} listas · ${stats.duplicates} duplicadas · ${stats.recommended} recomendadas para Leads</span>
+      <span>${summary}</span>
     </div>
     <div class="coverage-post-actions">
-      <button class="btn-primary btn-sm" onclick="coverageImportRecommended()">Importar recomendadas</button>
+      ${primaryAction}
       <button class="btn-outline btn-sm" onclick="coverageReviewResults()">Revisar resultados</button>
       <button class="btn-outline btn-sm" onclick="showCoverageMissionCoverage()">Ver cobertura</button>
       <button class="btn-outline btn-sm" onclick="showCoverageMissionLeads()">Ver leads</button>
@@ -2134,7 +2166,8 @@ function installCoverageSearchResultHooks() {
       if (mission && normalizeCoverageLocation(mission.location) === normalizeCoverageLocation(location)) {
         const stats = summarizeCoverageResults(results || []);
         updateCoverageMission({
-          status: 'scraping',
+          status: stats.uniqueCount ? 'review' : 'empty',
+          lastSearchStatus: stats.uniqueCount ? 'complete' : 'empty',
           searchedCount: stats.uniqueCount,
           readyCount: stats.readyCount,
           importedCount: Math.max(mission.importedCount || 0, importedCount || 0),

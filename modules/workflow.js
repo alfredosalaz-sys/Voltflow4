@@ -309,6 +309,14 @@
   function continueMission() {
     const mission = getMissionSafe();
     if (mission && mission.location && mission.sector) {
+      if (mission.status === 'leads' && typeof showCoverageMissionLeads === 'function') {
+        showCoverageMissionLeads();
+        return;
+      }
+      if (['scraping', 'review', 'empty', 'error', 'import'].includes(mission.status) && typeof showCoverageMissionResults === 'function') {
+        showCoverageMissionResults();
+        return;
+      }
       runCoverageSearch(encodeURIComponent(mission.location), encodeURIComponent(mission.sector), true);
       return;
     }
@@ -434,6 +442,7 @@
           <div class="ops-actions compact">
             <button class="btn-outline btn-sm" onclick="workflowContinueMission()">Continuar</button>
             <button class="btn-outline btn-sm" onclick="showView('leads')">Ver leads</button>
+            ${mission ? '<button class="btn-outline btn-sm" onclick="clearCoverageMission && clearCoverageMission()">Cerrar</button>' : ''}
           </div>
         </div>
         <div class="ops-card">
@@ -478,6 +487,7 @@
         <button class="btn-primary btn-sm" onclick="workflowContinueMission()">Continuar</button>
         <button class="btn-outline btn-sm" onclick="showView('coverage')">Cobertura</button>
         <button class="btn-outline btn-sm" onclick="workflowOpenCoverageMap()">Mapa</button>
+        ${mission ? '<button class="btn-outline btn-sm" onclick="clearCoverageMission && clearCoverageMission()">Cerrar</button>' : ''}
       </div>`;
   }
 
@@ -721,6 +731,12 @@
 
   function installWrappers() {
     wrapFunction('searchBusinesses', () => {
+      if (window.__gordiBypassRepeatPreflight) {
+        window.__gordiBypassRepeatPreflight = false;
+        repeatBypassOnce = false;
+        createRestorePoint('before_search');
+        return true;
+      }
       const ctx = getSearchContext();
       const risk = repeatRisk(ctx.segment, ctx.location);
       if (risk && !repeatBypassOnce) {
@@ -869,6 +885,7 @@
   window.workflowBypassRepeatAndSearch = function () {
     const modal = document.getElementById('workflow-repeat-modal');
     if (modal) modal.style.display = 'none';
+    window.__gordiBypassRepeatPreflight = true;
     repeatBypassOnce = true;
     if (typeof searchBusinesses === 'function') searchBusinesses();
   };

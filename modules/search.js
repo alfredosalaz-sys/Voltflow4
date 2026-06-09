@@ -1408,7 +1408,11 @@ async function fetchPlaces(segment, location, maxResults, opts = {}) {
   }
 
   if (!allPlaces.length && failedQueries) {
-    logEnrich(`Places no produjo resultados. Fallaron ${failedQueries}/${queryAttempts} consultas; ultimo error: ${lastQueryError || 'sin detalle'}. Revisa cuota/API key o prueba otra zona.`, 'err');
+    const failMessage = `Places no produjo resultados. Fallaron ${failedQueries}/${queryAttempts} consultas; ultimo error: ${lastQueryError || 'sin detalle'}. Revisa cuota/API key o prueba otra zona.`;
+    logEnrich(failMessage, 'err');
+    if (queryAttempts > 0 && failedQueries >= queryAttempts) {
+      throw new Error(failMessage);
+    }
   } else if (!allPlaces.length) {
     logEnrich(`Places devolvio 0 empresas tras ${queryAttempts} consultas. Prueba otra zona, mas radio o otro sector.`, 'warn');
   }
@@ -3442,12 +3446,50 @@ function setStep(step, state, msg) {
 }
 
 function emitSearchFlow(type, payload = {}) {
+  const current = window.gordiSearchLifecycle || {};
+  if (type === 'search:start') {
+    window.gordiSearchLifecycle = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      status: 'running',
+      phase: payload.mode === 'multi' ? 'multisector' : 'places',
+      location: payload.location || '',
+      sectors: Array.isArray(payload.sectors) ? payload.sectors.slice(0, 12) : [],
+      mode: payload.mode || 'single',
+      startedAt: new Date().toISOString(),
+      resultCount: 0,
+      error: ''
+    };
+  } else if (type === 'search:complete') {
+    window.gordiSearchLifecycle = {
+      ...current,
+      status: payload.status || 'complete',
+      phase: 'done',
+      finishedAt: new Date().toISOString(),
+      resultCount: payload.resultCount ?? payload.results?.length ?? current.resultCount ?? 0,
+      error: ''
+    };
+  } else if (type === 'search:error') {
+    window.gordiSearchLifecycle = {
+      ...current,
+      status: 'error',
+      phase: 'failed',
+      finishedAt: new Date().toISOString(),
+      error: payload.error || 'error'
+    };
+  }
   if (typeof emitGordiFlowEvent === 'function') emitGordiFlowEvent(type, payload);
 }
 
 function createSearchSafetyPoint(reason) {
   if (typeof createSafetySnapshot !== 'function') return;
   try { createSafetySnapshot(reason, { silent: true }); } catch {}
+}
+
+function syncCoverageMissionSearchState(status, patch = {}) {
+  if (typeof updateCoverageMission !== 'function') return;
+  try {
+    updateCoverageMission({ lastSearchStatus: status, ...patch });
+  } catch {}
 }
 
 async function searchBusinesses() {
@@ -3465,6 +3507,13 @@ async function searchBusinesses() {
     } catch (err) {
       console.error('Busqueda individual fallida:', err);
       logEnrich('Error inesperado en busqueda: ' + (err?.message || err), 'err');
+      const location = document.getElementById('plan-location')?.value?.trim() || '';
+      const sector = document.getElementById('plan-segment')?.value || '';
+      emitSearchFlow('search:error', { location, sectors: [sector], mode: 'single', error: err?.message || String(err) });
+      if (typeof recordSearchCoverage === 'function') {
+        recordSearchCoverage({ location, sectors: [sector], mode: 'single', status: 'error', results: [], rawCount: 0, error: err?.message || String(err) });
+      }
+      syncCoverageMissionSearchState('error', { status: 'error' });
       resetSearchBtn();
     }
     return;
@@ -3482,6 +3531,11 @@ async function searchBusinesses() {
   } catch (err) {
     console.error('Busqueda multi-sector fallida:', err);
     logEnrich('Error inesperado en multi-sector: ' + (err?.message || err), 'err');
+    emitSearchFlow('search:error', { location, sectors, mode: 'multi', error: err?.message || String(err) });
+    if (typeof recordSearchCoverage === 'function') {
+      recordSearchCoverage({ location, sectors, mode: 'multi', status: 'error', results: [], rawCount: 0, error: err?.message || String(err) });
+    }
+    syncCoverageMissionSearchState('error', { status: 'error' });
     resetSearchBtn();
   }
 }
@@ -3766,6 +3820,13 @@ async function searchBusinessesSingle(options = {}) {
       await waitForGoogleMaps(12000);
     } catch (err) {
       alert('Error al inicializar Google Maps. Revisa tu API Key en Configuración.\n' + err.message);
+      if (!isMultiChild) {
+        emitSearchFlow('search:error', { location, sectors: [segment], mode: 'single', error: err?.message || String(err) });
+        if (typeof recordSearchCoverage === 'function') {
+          recordSearchCoverage({ location, sectors: [segment], mode: 'single', status: 'error', results: [], rawCount: 0, error: err?.message || String(err) });
+        }
+        syncCoverageMissionSearchState('error', { status: 'error' });
+      }
       if (!isMultiChild) document.getElementById('btn-search').textContent = '🔍 Buscar y Enriquecer';
       return;
     }
@@ -3810,13 +3871,46 @@ async function searchBusinessesSingle(options = {}) {
   } catch (err) {
     setStep('places','error','Error');
     logEnrich('❌ ' + err.message, 'err');
+    tempSearchResults = [];
+    renderSearchCards();
+    showResultsPanel();
+    updateEnrichStats();
+    setProgress(100);
+    if (!isMultiChild) {
+      emitSearchFlow('search:error', { location, sectors: [segment], mode: 'single', error: err?.message || String(err) });
+      if (typeof recordSearchCoverage === 'function') {
+        recordSearchCoverage({ location, sectors: [segment], mode: 'single', status: 'error', results: [], rawCount: 0, error: err?.message || String(err) });
+      }
+      syncCoverageMissionSearchState('error', { status: 'error' });
+    }
     if (!isMultiChild) resetSearchBtn();
     return;
   }
 
   if (!places.length) {
     setStep('places','done','0 resultados');
+    setStep('done','done','0 resultados');
     logEnrich('⚠️ Sin resultados. Prueba otra zona.', 'warn');
+    tempSearchResults = [];
+    renderSearchCards();
+    showResultsPanel();
+    updateEnrichStats();
+    setProgress(100);
+    if (!isMultiChild) {
+      emitSearchFlow('search:complete', {
+        location,
+        sectors: [segment],
+        mode: 'single',
+        status: 'empty',
+        results: [],
+        rawCount: 0,
+        resultCount: 0,
+      });
+      if (typeof recordSearchCoverage === 'function') {
+        recordSearchCoverage({ location, sectors: [segment], mode: 'single', status: 'empty', results: [], rawCount: 0 });
+      }
+      syncCoverageMissionSearchState('empty', { status: 'empty', searchedCount: 0, readyCount: 0 });
+    }
     if (!isMultiChild) resetSearchBtn();
     return;
   }

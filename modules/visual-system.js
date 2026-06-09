@@ -27,6 +27,7 @@
   function qs(id) { return document.getElementById(id); }
   function getLeads() { return Array.isArray(window.leads) ? window.leads : []; }
   function getResults() { return Array.isArray(window.tempSearchResults) ? window.tempSearchResults : []; }
+  function getSearchLifecycle() { return window.gordiSearchLifecycle || {}; }
   function norm(value) { return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
   function companyKey(item = {}) { return norm(item.company || item.name || '').replace(/[^\w]+/g, ''); }
 
@@ -81,8 +82,9 @@
     const inputLocation = qs('plan-location')?.value?.trim() || '';
     const missionLocation = activeMission?.location || activeMission?.postalCode || '';
     const missionSector = activeMission?.sector || activeMission?.sectors?.[0] || '';
+    const lifecycle = getSearchLifecycle();
     const sector = missionSector || inputSector;
-    const location = missionLocation || inputLocation;
+    const location = missionLocation || lifecycle.location || inputLocation;
     const results = getResults();
     const leads = getLeads();
     const complete = results.filter(r => r && r.email && r.phone).length;
@@ -94,8 +96,9 @@
       return !Number.isNaN(d.getTime()) && d < new Date();
     }).length;
     const hasStoredMission = !!(missionLocation || missionSector || activeMission?.label || activeMission?.resultSearchId);
-    const hasMission = !!(hasStoredMission || location || results.length);
-    return { sector, location, results: results.length, complete, withEmail, pending, overdue, view: getActiveView(), hasMission };
+    const searching = lifecycle.status === 'running';
+    const hasMission = !!(hasStoredMission || location || results.length || lifecycle.status);
+    return { sector, location, results: results.length, complete, withEmail, pending, overdue, view: getActiveView(), hasMission, lifecycle, searching };
   }
 
   function formatRelativeMoment(value) {
@@ -191,6 +194,7 @@
   }
 
   function getMissionAction(data) {
+    if (data.searching) return { label: 'Volver al scraping', view: 'planner', icon: 'search' };
     if (data.view === 'coverage') return { label: 'Buscar pendiente', view: 'planner', icon: 'search' };
     if (data.view === 'planner' && data.results) return { label: 'Importar completos', fn: 'importSelectedSearch', icon: 'lead' };
     if (data.view === 'planner') return { label: 'Lanzar busqueda', fn: 'searchBusinesses', icon: 'search' };
@@ -294,17 +298,24 @@
     const bar = ensureMissionBar();
     const action = getMissionAction(data);
     bar.style.display = 'grid';
+    const missionMetric = data.searching
+      ? `<span class="state-chip state-info">Buscando ahora</span>`
+      : `<span class="state-chip state-info">${data.results} resultados</span>`;
+    const flowSearchDone = data.searching || data.results > 0;
+    const missionSubline = data.searching
+      ? `Scraping en curso${data.lifecycle?.mode === 'multi' ? ' · multibusqueda' : ''}`
+      : (data.sector || 'Sector pendiente');
     bar.innerHTML = `
-      <div class="mission-context"><span class="mission-kicker">Mision activa</span><strong>${esc(data.location || 'Busqueda actual')}</strong><span>${esc(data.sector || 'Sector pendiente')}</span></div>
+      <div class="mission-context"><span class="mission-kicker">Mision activa</span><strong>${esc(data.location || 'Busqueda actual')}</strong><span>${esc(missionSubline)}</span></div>
       <div class="mission-flow" aria-label="Flujo de trabajo">
         ${renderFlowStep('Cobertura', data.view === 'coverage', true)}
-        ${renderFlowStep('Buscar', data.view === 'planner', data.results > 0)}
-        ${renderFlowStep('Resultados', data.view === 'planner' && data.results > 0, data.results > 0)}
+        ${renderFlowStep('Buscar', data.view === 'planner' && data.searching, flowSearchDone)}
+        ${renderFlowStep('Resultados', data.view === 'planner' && !data.searching && data.results > 0, data.results > 0)}
         ${renderFlowStep('Leads', data.view === 'leads' || data.view === 'kanban', data.pending >= 0)}
         ${renderFlowStep('Mapa', data.view === 'map', false)}
       </div>
       <div class="mission-metrics">
-        <span class="state-chip state-info">${data.results} resultados</span>
+        ${missionMetric}
         <span class="state-chip state-success">${data.withEmail} con email</span>
         <span class="state-chip state-warning">${data.overdue} vencidos</span>
       </div>

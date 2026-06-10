@@ -18,7 +18,7 @@ function toggleLeadSelect(cb) {
   updateBulkBar();
 }
 function toggleAllLeadsCheck(checked) {
-  const list = getFilteredLeads();
+  const list = typeof getVisibleLeads === 'function' ? getVisibleLeads() : getFilteredLeads();
   list.forEach(l => {
     if (checked) selectedLeadIds.add(String(l.id));
     else selectedLeadIds.delete(String(l.id));
@@ -706,7 +706,8 @@ function executeLocalImport(mode) {
     saveLeads();
     localStorage.setItem('gordi_email_history', JSON.stringify(emailHistory));
     localStorage.setItem('gordi_campaigns', JSON.stringify(campaigns));
-    renderAll(); renderDashboardCharts(); renderTracking(); renderCampaigns();
+    if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('storage-merge');
+    refreshDataDependentViews({ reason: 'storage-merge' });
     closeImportModal();
     showToast(`✅ Combinado: +${added} leads nuevos importados`);
 
@@ -717,7 +718,8 @@ function executeLocalImport(mode) {
     saveLeads();
     localStorage.setItem('gordi_email_history', JSON.stringify(emailHistory));
     localStorage.setItem('gordi_campaigns', JSON.stringify(campaigns));
-    renderAll(); renderDashboardCharts(); renderTracking(); renderCampaigns();
+    if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('storage-replace');
+    refreshDataDependentViews({ reason: 'storage-replace' });
     closeImportModal();
     showToast(`✅ ${leads.length} leads cargados desde el storage`);
 
@@ -952,9 +954,8 @@ function restoreBackup(event) {
         localStorage.setItem('gordi_campaigns',     JSON.stringify(campaigns));
         localStorage.setItem('gordi_objectives',    JSON.stringify(objectives));
         localStorage.setItem('gordi_templates',     JSON.stringify(emailTemplates));
-        renderAll(); renderDashboardCharts();
-        if (typeof renderTracking     === 'function') renderTracking();
-        if (typeof renderCampaigns    === 'function') renderCampaigns();
+        if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('backup-restore');
+        refreshDataDependentViews({ reason: 'backup-restore' });
         if (typeof renderTemplateList === 'function') renderTemplateList();
         showToast(`✅ Backup restaurado: ${leads.length} leads`);
         return;
@@ -1000,9 +1001,8 @@ function restoreBackup(event) {
           } catch {}
         }
 
-        renderAll(); renderDashboardCharts();
-        if (typeof renderTracking     === 'function') renderTracking();
-        if (typeof renderCampaigns    === 'function') renderCampaigns();
+        if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('portable-restore');
+        refreshDataDependentViews({ reason: 'portable-restore' });
         if (typeof renderTemplateList === 'function') renderTemplateList();
         showToast(`✅ Datos portátiles restaurados: ${leads.length} leads`);
         return;
@@ -1050,14 +1050,19 @@ function cleanObsoleteLeads() {
 }
 
 // ============ STORAGE INFO ============
-function updateStorageInfo() {
+let _storageInfoCache = { at: 0, kb: 0 };
+function updateStorageInfo(force = false) {
   const el = document.getElementById('storage-info-text');
   const fill = document.getElementById('storage-fill');
   if (typeof renderDiskBackupStatus === 'function') renderDiskBackupStatus();
   if (!el) return;
-  let total = 0;
-  for (let k in localStorage) { if (k.startsWith('gordi_')) total += (localStorage[k]||'').length * 2; }
-  const kb = Math.round(total / 1024);
+  let kb = _storageInfoCache.kb;
+  if (force || Date.now() - _storageInfoCache.at > 60000) {
+    let total = 0;
+    for (let k in localStorage) { if (k.startsWith('gordi_')) total += (localStorage[k]||'').length * 2; }
+    kb = Math.round(total / 1024);
+    _storageInfoCache = { at: Date.now(), kb };
+  }
   const maxKb = 5120;
   const pct = Math.min(Math.round(kb / maxKb * 100), 100);
   el.textContent = `Espacio usado: ${kb} KB de ${maxKb} KB (${leads.length} leads · ${emailHistory.length} emails)`;
@@ -1066,20 +1071,53 @@ function updateStorageInfo() {
 }
 
 // ============ API ERROR LOG ============
+let _apiLogBuffer = null;
+let _apiLogFlushTimer = null;
+function readApiLog() {
+  if (_apiLogBuffer) return _apiLogBuffer;
+  try { _apiLogBuffer = JSON.parse(localStorage.getItem('gordi_api_log') || '[]'); }
+  catch { _apiLogBuffer = []; }
+  return _apiLogBuffer;
+}
+function flushApiLog() {
+  if (_apiLogFlushTimer) clearTimeout(_apiLogFlushTimer);
+  _apiLogFlushTimer = null;
+  try { localStorage.setItem('gordi_api_log', JSON.stringify((_apiLogBuffer || []).slice(0, 50))); } catch {}
+}
 function logApiError(msg) {
-  let log = JSON.parse(localStorage.getItem('gordi_api_log') || '[]');
-  log.unshift({ msg, date: new Date().toISOString() });
-  log = log.slice(0, 50);
-  localStorage.setItem('gordi_api_log', JSON.stringify(log));
-  renderApiLog();
+  const log = readApiLog();
+  log.unshift({ msg: String(msg || '').slice(0, 280), date: new Date().toISOString() });
+  _apiLogBuffer = log.slice(0, 50);
+  if (_apiLogFlushTimer) clearTimeout(_apiLogFlushTimer);
+  _apiLogFlushTimer = setTimeout(flushApiLog, 5000);
+  if (typeof isViewActive !== 'function' || isViewActive('settings')) renderApiLog();
 }
 function renderApiLog() {
   const el = document.getElementById('api-error-log');
   if (!el) return;
-  const log = JSON.parse(localStorage.getItem('gordi_api_log') || '[]');
+  const log = readApiLog();
   el.innerHTML = log.length ? log.map(e => `<div style="border-bottom:1px solid var(--glass-border);padding:.2rem 0;"><span style="color:var(--text-dim)">${new Date(e.date).toLocaleString('es-ES')}</span> — ${e.msg}</div>`).join('') : 'Sin errores registrados ✓';
 }
-function clearApiLog() { localStorage.removeItem('gordi_api_log'); renderApiLog(); showToast('Log limpiado'); }
+function clearApiLog() {
+  _apiLogBuffer = [];
+  if (_apiLogFlushTimer) clearTimeout(_apiLogFlushTimer);
+  _apiLogFlushTimer = null;
+  localStorage.removeItem('gordi_api_log');
+  renderApiLog();
+  showToast('Log limpiado');
+}
+
+function refreshDataDependentViews(options = {}) {
+  const refreshDashboard = options.dashboard !== false;
+  if (typeof renderAll === 'function') renderAll();
+  if (refreshDashboard && typeof queueDashboardProgressiveRender === 'function' && typeof isViewActive === 'function' && isViewActive('dashboard')) {
+    queueDashboardProgressiveRender(options.reason || 'data-refresh');
+  } else if (refreshDashboard && typeof renderDashboardCharts === 'function' && (!('isViewActive' in window) || isViewActive('dashboard'))) {
+    renderDashboardCharts();
+  }
+  if (typeof renderTracking === 'function' && (!('isViewActive' in window) || isViewActive('tracking'))) renderTracking();
+  if (typeof renderCampaigns === 'function' && (!('isViewActive' in window) || isViewActive('campaigns'))) renderCampaigns();
+}
 
 // ============ TUTORIAL ============
 const tutorialSteps = [
@@ -1120,23 +1158,41 @@ const _origImportSearch = importSelectedSearch;
 // Already has source:'search' in the new saveLead - handled inline
 
 // ============ RENDER DASHBOARD OVERRIDE ============
-function renderDashboardCharts() {
-  renderSegmentChart();
-  renderTopLeads();
-  renderConversionMetrics();
-  renderSectorPerformance();
-  renderIntelPanel();
-  renderSmartAlert();
-  renderFunnelChart();
-  renderPipelineValue();
-  renderStreakPanel();
-  renderHeatmap();
-  renderObjectivesPanel();
-  renderTodayPanel();
-  renderApiLog();
-  updateStorageInfo();
-  renderDailyStats();
-  sanitizeDashboardMarkup();
+function renderDashboardCharts(mode = 'full') {
+  const run = () => {
+    const lightDashboard = window.GORDI_SAFE_MODE || leads.length > 900;
+    renderSegmentChart();
+    renderTopLeads();
+    renderConversionMetrics();
+    renderTodayPanel();
+    if (typeof isViewActive === 'function' && isViewActive('settings')) updateStorageInfo();
+    if (mode === 'primary') {
+      sanitizeDashboardMarkup();
+      return;
+    }
+    renderSmartAlert();
+    renderPipelineValue();
+    renderObjectivesPanel();
+    renderStreakPanel();
+    if (mode === 'secondary') {
+      sanitizeDashboardMarkup();
+      return;
+    }
+    if (!lightDashboard) {
+      renderSectorPerformance();
+      renderIntelPanel();
+      renderFunnelChart();
+      renderHeatmap();
+      renderApiLog();
+      renderDailyStats();
+    }
+    sanitizeDashboardMarkup();
+  };
+  if (typeof window.gordiPerfMeasure === 'function') {
+    window.gordiPerfMeasure('dashboard:charts', run, { leads: leads.length, safeMode: !!window.GORDI_SAFE_MODE });
+  } else {
+    run();
+  }
 }
 
 function renderDailyStats() {

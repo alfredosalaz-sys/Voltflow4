@@ -283,10 +283,7 @@ function scheduleSearchTableRender() {
 }
 
 function scheduleSearchCardsRender(delay = 700) {
-  scheduleUI('searchCards', () => {
-    renderSearchCards();
-    scheduleAdvancedFilters(0);
-  }, delay);
+  scheduleUI('searchCards', applyAdvancedFilters, delay);
 }
 
 function scheduleAdvancedFilters(delay = 300) {
@@ -637,34 +634,49 @@ function filterUXStatus(status) {
 
 // ── Cache de Enriquecimiento (Idea 5) ────────────────────────────────────────
 // Evita re-scrapear empresas en la misma sesión/días para ahorrar tiempo y APIs
+let _enrichCacheMemory = null;
+let _enrichCacheFlushTimer = null;
+function readEnrichCacheStore() {
+  if (_enrichCacheMemory) return _enrichCacheMemory;
+  try { _enrichCacheMemory = JSON.parse(localStorage.getItem('gordi_enrich_cache') || '{}'); }
+  catch { _enrichCacheMemory = {}; }
+  return _enrichCacheMemory;
+}
+function flushEnrichCacheStore() {
+  if (_enrichCacheFlushTimer) clearTimeout(_enrichCacheFlushTimer);
+  _enrichCacheFlushTimer = null;
+  try { localStorage.setItem('gordi_enrich_cache', JSON.stringify(_enrichCacheMemory || {})); } catch(e) {}
+}
 const _enrichCache = {
   get: (id) => {
     try {
-      const entry = JSON.parse(localStorage.getItem('gordi_enrich_cache') || '{}')[id];
+      const entry = readEnrichCacheStore()[id];
       if (entry && (Date.now() - entry.ts < 1000 * 60 * 60 * 24 * 7)) return entry.data; // 7 días
     } catch(e) {}
     return null;
   },
   set: (id, data) => {
     try {
-      const cache = JSON.parse(localStorage.getItem('gordi_enrich_cache') || '{}');
+      const cache = readEnrichCacheStore();
       cache[id] = { ts: Date.now(), data };
       // Mantener tamaño razonable (< 2MB)
       const keys = Object.keys(cache);
       if (keys.length > 500) delete cache[keys[0]];
-      localStorage.setItem('gordi_enrich_cache', JSON.stringify(cache));
+      if (_enrichCacheFlushTimer) clearTimeout(_enrichCacheFlushTimer);
+      _enrichCacheFlushTimer = setTimeout(flushEnrichCacheStore, 12000);
     } catch(e) {}
   },
   setMany: (items) => {
     try {
-      const cache = JSON.parse(localStorage.getItem('gordi_enrich_cache') || '{}');
+      const cache = readEnrichCacheStore();
       const ts = Date.now();
       (items || []).forEach(data => {
         if (data?.id) cache[data.id] = { ts, data };
       });
       const keys = Object.keys(cache);
       while (keys.length > 500) delete cache[keys.shift()];
-      localStorage.setItem('gordi_enrich_cache', JSON.stringify(cache));
+      if (_enrichCacheFlushTimer) clearTimeout(_enrichCacheFlushTimer);
+      _enrichCacheFlushTimer = setTimeout(flushEnrichCacheStore, 12000);
     } catch(e) {}
   }
 };
@@ -4431,13 +4443,22 @@ function getCommercialMemoryKey(c) {
   return String(raw).toLowerCase().replace(/^www\./, '').replace(/[^a-z0-9.-]/g, '').slice(0, 90);
 }
 
+let _commercialMemoryStore = null;
+let _commercialMemoryFlushTimer = null;
 function loadCommercialMemory() {
-  try { return JSON.parse(localStorage.getItem('gordi_commercial_memory') || '{}'); }
-  catch { return {}; }
+  if (_commercialMemoryStore) return _commercialMemoryStore;
+  try { _commercialMemoryStore = JSON.parse(localStorage.getItem('gordi_commercial_memory') || '{}'); }
+  catch { _commercialMemoryStore = {}; }
+  return _commercialMemoryStore;
 }
 
 function saveCommercialMemory(memory) {
-  localStorage.setItem('gordi_commercial_memory', JSON.stringify(memory));
+  _commercialMemoryStore = memory || {};
+  if (_commercialMemoryFlushTimer) clearTimeout(_commercialMemoryFlushTimer);
+  _commercialMemoryFlushTimer = setTimeout(() => {
+    _commercialMemoryFlushTimer = null;
+    localStorage.setItem('gordi_commercial_memory', JSON.stringify(_commercialMemoryStore || {}));
+  }, 12000);
 }
 
 function getLeadMemory(c) {
@@ -5451,10 +5472,11 @@ function createCampaignFromVisibleSearch() {
   });
   saveLeads();
   localStorage.setItem('gordi_campaigns', JSON.stringify(campaigns));
+  if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('visible-campaign-created');
   recordLeadMemoryBulk(entries.map(x => x.c), 'visible_campaign_created', c => ({ segment: c.sourceSector || segment, location, score: c.opportunityScore || 0 }));
   renderAll();
-  renderDashboardCharts();
-  if (typeof renderCampaigns === 'function') renderCampaigns();
+  if (typeof queueDashboardProgressiveRender === 'function' && typeof isViewActive === 'function' && isViewActive('dashboard')) queueDashboardProgressiveRender('visible-campaign');
+  if (typeof renderCampaigns === 'function' && (!('isViewActive' in window) || isViewActive('campaigns'))) renderCampaigns();
   emitSearchFlow('leads:imported-from-search', {
     source: 'visible_campaign',
     location,
@@ -5609,8 +5631,8 @@ async function importSelectedSearch() {
 
   saveLeads();
   renderAll();
-  renderDashboardCharts();
-  if (typeof renderTracking === 'function') renderTracking();
+  if (typeof queueDashboardProgressiveRender === 'function' && typeof isViewActive === 'function' && isViewActive('dashboard')) queueDashboardProgressiveRender('bulk-import');
+  if (typeof renderTracking === 'function' && (!('isViewActive' in window) || isViewActive('tracking'))) renderTracking();
   updateStreakData();
   emitSearchFlow('leads:imported-from-search', {
     source: 'bulk',
@@ -5780,10 +5802,11 @@ function createProspectingCampaignFromSearch() {
   });
   saveLeads();
   localStorage.setItem('gordi_campaigns', JSON.stringify(campaigns));
+  if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('prospecting-campaign-created');
   recordLeadMemoryBulk(candidates, 'campaign_created', c => ({ segment, location, score: c.opportunityScore || 0 }));
   renderAll();
-  renderDashboardCharts();
-  if (typeof renderCampaigns === 'function') renderCampaigns();
+  if (typeof queueDashboardProgressiveRender === 'function' && typeof isViewActive === 'function' && isViewActive('dashboard')) queueDashboardProgressiveRender('prospecting-campaign');
+  if (typeof renderCampaigns === 'function' && (!('isViewActive' in window) || isViewActive('campaigns'))) renderCampaigns();
   updateStreakData();
   emitSearchFlow('leads:imported-from-search', {
     source: 'campaign',
@@ -5813,8 +5836,8 @@ function quickImportOne(idx) {
     recordLeadMemory(c, 'imported_quick', { score: c.opportunityScore || 0, location });
     saveLeads();
     renderAll();
-    renderDashboardCharts();
-    if (typeof renderTracking === 'function') renderTracking();
+    if (typeof queueDashboardProgressiveRender === 'function' && typeof isViewActive === 'function' && isViewActive('dashboard')) queueDashboardProgressiveRender('quick-import');
+    if (typeof renderTracking === 'function' && (!('isViewActive' in window) || isViewActive('tracking'))) renderTracking();
     updateStats();
     updateStreakData();
     emitSearchFlow('leads:imported-from-search', {

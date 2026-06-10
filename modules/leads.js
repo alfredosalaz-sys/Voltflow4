@@ -46,6 +46,68 @@ function saveLead() {
 }
 
 let _saveLeadsTimer = null;
+let _leadViewPreset = '';
+let _filteredLeadsCache = { signature: '', list: [], totalActive: 0, activeFilters: 0 };
+let _leadComputeWorker = null;
+let _leadWorkerRequestSeq = 0;
+let _leadWorkerPendingRequest = 0;
+let _leadFilterDataVersion = 0;
+
+function getLeadComputeWorker() {
+  if (_leadComputeWorker || window.GORDI_SAFE_MODE || typeof Worker === 'undefined') return _leadComputeWorker;
+  try {
+    _leadComputeWorker = new Worker('modules/compute-worker.js');
+  } catch (error) {
+    console.warn('No se pudo iniciar compute-worker para leads:', error);
+    _leadComputeWorker = null;
+  }
+  return _leadComputeWorker;
+}
+
+function computeFilteredLeadsWithWorker(filters, signature) {
+  const worker = getLeadComputeWorker();
+  if (!worker) return Promise.resolve(null);
+  const requestId = ++_leadWorkerRequestSeq;
+  _leadWorkerPendingRequest = requestId;
+  const payload = {
+    leads: Array.isArray(leads) ? leads : [],
+    filters
+  };
+  return new Promise(resolve => {
+    const cleanup = () => {
+      worker.removeEventListener('message', onMessage);
+      worker.removeEventListener('error', onError);
+    };
+    const onMessage = event => {
+      const data = event.data || {};
+      if (data.type !== 'filterLeadsResult' || data.requestId !== requestId) return;
+      cleanup();
+      const result = data.result || {};
+      const byId = new Map((Array.isArray(leads) ? leads : []).map(lead => [String(lead.id), lead]));
+      const hydrated = (Array.isArray(result.ids) ? result.ids : [])
+        .map(id => byId.get(String(id)))
+        .filter(Boolean);
+      resolve({
+        signature,
+        list: hydrated,
+        totalActive: Number(result.totalActive || 0),
+        activeFilters: Number(result.activeFilters || 0),
+        requestId
+      });
+    };
+    const onError = () => {
+      cleanup();
+      resolve(null);
+    };
+    worker.addEventListener('message', onMessage);
+    worker.addEventListener('error', onError);
+    worker.postMessage({
+      type: 'filterLeads',
+      requestId,
+      payload
+    });
+  });
+}
 function saveLeads() {
   const currentLeads = Array.isArray(leads) ? leads : [];
   if (currentLeads.length > 0 && typeof createCriticalRescueSnapshot === 'function') {
@@ -78,6 +140,8 @@ function saveLeads() {
     return;
   }
   _goldenProfile = null; // Invalidar cache lookalike
+  invalidateLeadFilterCache();
+  if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('leads-save');
 
   // 🏛️ ARQUITECTURA: Notificar cambio global
   if (typeof notifyStateChange === 'function') notifyStateChange();
@@ -106,6 +170,7 @@ function getCoverageLeadScope() {
 
 function clearCoverageLeadScope() {
   try { localStorage.removeItem('gordi_coverage_lead_filter'); } catch {}
+  invalidateLeadFilterCache();
   renderLeads();
 }
 
@@ -146,25 +211,72 @@ function renderCoverageLeadScopeBar() {
     <button class="btn-outline btn-sm" onclick="clearCoverageLeadScope()">Quitar filtro</button>`;
 }
 
+function invalidateLeadFilterCache() {
+  _leadFilterDataVersion += 1;
+  _filteredLeadsCache = { signature: '', list: [], totalActive: 0, activeFilters: 0 };
+}
+
+function getLeadFilterState() {
+  return {
+    search: (document.getElementById('lead-search')?.value || '').toLowerCase(),
+    seg: document.getElementById('filter-segment')?.value || '',
+    status: document.getElementById('filter-status')?.value || '',
+    source: document.getElementById('filter-source')?.value || '',
+    sort: document.getElementById('sort-leads')?.value || 'score',
+    scoreMin: parseInt(document.getElementById('filter-score-min')?.value || '0') || 0,
+    dateRange: document.getElementById('filter-date-range')?.value || '',
+    nextCon: document.getElementById('filter-next-contact')?.value || '',
+    coverageScope: getCoverageLeadScope(),
+    preset: _leadViewPreset || ''
+  };
+}
+
+function getLeadFilterSignature(state) {
+  const coverageSignature = state.coverageScope
+    ? [state.coverageScope.location || '', state.coverageScope.sector || '', state.coverageScope.missionId || ''].join('|')
+    : '';
+  return [
+    state.search,
+    state.seg,
+    state.status,
+    state.source,
+    state.sort,
+    state.scoreMin,
+    state.dateRange,
+    state.nextCon,
+    coverageSignature,
+    state.preset,
+    _leadFilterDataVersion
+  ].join('||');
+}
+
+function updateLeadsCountBar(visibleCount, totalActive, activeFilters, pageInfo) {
+  const bar = document.getElementById('leads-count-bar');
+  if (!bar) return;
+  const rangeText = pageInfo ? ` · ${pageInfo.pageStart + 1}-${pageInfo.pageEnd} visibles` : '';
+  bar.innerHTML = `Mostrando <strong>${visibleCount}</strong> de ${totalActive} leads${rangeText}` +
+    (activeFilters ? ` <span style="color:var(--primary)">(${activeFilters} filtro${activeFilters > 1 ? 's' : ''} activo${activeFilters > 1 ? 's' : ''})</span>` : '');
+}
+
 function getFilteredLeads() {
-  const search    = (document.getElementById('lead-search')?.value || '').toLowerCase();
-  const seg       = document.getElementById('filter-segment')?.value || '';
-  const status    = document.getElementById('filter-status')?.value || '';
-  const source    = document.getElementById('filter-source')?.value || '';
-  const sort      = document.getElementById('sort-leads')?.value || 'score';
-  const scoreMin  = parseInt(document.getElementById('filter-score-min')?.value || '0') || 0;
-  const dateRange = document.getElementById('filter-date-range')?.value || '';
-  const nextCon   = document.getElementById('filter-next-contact')?.value || '';
-  const coverageScope = getCoverageLeadScope();
+  const state = getLeadFilterState();
+  const signature = getLeadFilterSignature(state);
+  if (_filteredLeadsCache.signature === signature) {
+    updateLeadsCountBar(_filteredLeadsCache.list.length, _filteredLeadsCache.totalActive, _filteredLeadsCache.activeFilters);
+    return _filteredLeadsCache.list;
+  }
+  const { search, seg, status, source, sort, scoreMin, dateRange, nextCon, coverageScope, preset } = state;
 
   const today = new Date(); today.setHours(0,0,0,0);
   const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay() + 1);
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const threeMonthsAgo = new Date(today); threeMonthsAgo.setMonth(today.getMonth() - 3);
+  const totalActive = leads.filter(l => !l.archived).length;
 
   let list = leads.filter(l => {
     if (l.archived) return false;
     if (!leadMatchesCoverageScope(l, coverageScope)) return false;
+    if (preset === 'no_email' && l.email) return false;
     if (search) {
       const haystack = [l.name, l.company, l.email, l.phone, l.segment,
         l.signal, l.notes, l.address, l.web, l.description,
@@ -226,14 +338,42 @@ function getFilteredLeads() {
   });
 
   // Count active filters
-  const activeFilters = [search, seg, status, source, scoreMin, dateRange, nextCon, coverageScope ? 'coverage' : ''].filter(Boolean).length;
-  const bar = document.getElementById('leads-count-bar');
-  if (bar) {
-    const total = leads.filter(l=>!l.archived).length;
-    bar.innerHTML = `Mostrando <strong>${list.length}</strong> de ${total} leads` +
-      (activeFilters ? ` <span style="color:var(--primary)">(${activeFilters} filtro${activeFilters>1?'s':''} activo${activeFilters>1?'s':''})</span>` : '');
-  }
+  const activeFilters = [search, seg, status, source, scoreMin, dateRange, nextCon, coverageScope ? 'coverage' : '', preset].filter(Boolean).length;
+  _filteredLeadsCache = { signature, list, totalActive, activeFilters };
+  updateLeadsCountBar(list.length, totalActive, activeFilters);
   return list;
+}
+
+function getVisibleLeadsPage(list) {
+  const totalPages = Math.max(1, Math.ceil(list.length / LEADS_PAGE_SIZE));
+  if (leadsPage >= totalPages) leadsPage = totalPages - 1;
+  if (leadsPage < 0) leadsPage = 0;
+  const pageStart = leadsPage * LEADS_PAGE_SIZE;
+  const pageList = list.slice(pageStart, pageStart + LEADS_PAGE_SIZE);
+  return {
+    pageList,
+    totalPages,
+    pageStart,
+    pageEnd: Math.min(pageStart + pageList.length, list.length)
+  };
+}
+
+function getVisibleLeads() {
+  return getVisibleLeadsPage(getFilteredLeads()).pageList;
+}
+
+function renderLeadsPagination(totalLeads, pageInfo) {
+  const paginationEl = document.getElementById('leads-pagination');
+  if (!paginationEl) return;
+  if (pageInfo.totalPages <= 1) {
+    paginationEl.style.display = 'none';
+    return;
+  }
+  paginationEl.style.display = 'flex';
+  paginationEl.innerHTML = `
+    <button onclick="if(leadsPage>0){leadsPage--;renderLeads()}" ${leadsPage===0?'disabled':''} class="btn-outline btn-sm"><- Ant.</button>
+    <span style="font-size:.78rem;color:var(--text-dim)">Página ${leadsPage + 1} de ${pageInfo.totalPages} · ${pageInfo.pageStart + 1}-${pageInfo.pageEnd} de ${totalLeads}</span>
+    <button onclick="if(leadsPage<${pageInfo.totalPages - 1}){leadsPage++;renderLeads()}" ${leadsPage===pageInfo.totalPages-1?'disabled':''} class="btn-outline btn-sm">Sig. -></button>`;
 }
 
 function resetLeadsFilters() {
@@ -242,8 +382,10 @@ function resetLeadsFilters() {
     const el = document.getElementById(id);
     if (el) { el.value = id === 'sort-leads' ? 'score' : ''; }
   });
+  _leadViewPreset = '';
+  leadsPage = 0;
+  invalidateLeadFilterCache();
   clearCoverageLeadScope();
-  renderLeads();
 }
 
 function getActiveLeadFilterCount() {
@@ -256,7 +398,8 @@ function getActiveLeadFilterCount() {
     document.getElementById('filter-score-min')?.value || '',
     document.getElementById('filter-date-range')?.value || '',
     document.getElementById('filter-next-contact')?.value || '',
-    coverageScope ? 'coverage' : ''
+    coverageScope ? 'coverage' : '',
+    _leadViewPreset || ''
   ].filter(Boolean).length;
 }
 
@@ -271,6 +414,7 @@ function getActiveLeadFiltersSummary() {
   pushIf(document.getElementById('filter-score-min')?.value || '', `score >= ${document.getElementById('filter-score-min')?.value}`);
   pushIf(document.getElementById('filter-date-range')?.value || '', `fecha ${document.getElementById('filter-date-range')?.value}`);
   pushIf(document.getElementById('filter-next-contact')?.value || '', `seguimiento ${document.getElementById('filter-next-contact')?.value}`);
+  if (_leadViewPreset === 'no_email') items.push('sin email');
   if (coverageScope) {
     items.push(`cobertura ${coverageScope.location || coverageScope.label || coverageScope.sector || 'activa'}`);
   }
@@ -308,13 +452,126 @@ function showLeadEmptyState(empty, activeCount, totalLeads) {
     </div>`;
 }
 
-function renderLeads() {
+function buildLeadRow(lead) {
+  const tr = document.createElement('tr');
+  tr.setAttribute('data-lead-id', lead.id);
+  const bc = lead.score >= 70 ? 'badge-high' : (lead.score >= 40 ? 'badge-mid' : 'badge-low');
+  const sc = (lead.status || 'pendiente').toLowerCase().replace(/\s+/g, '-');
+  const scoreColor = lead.score >= 70 ? '#10d97c' : (lead.score >= 40 ? '#f59e0b' : '#ef4444');
+  const isSelected = selectedLeadIds.has(String(lead.id));
+  const daysOld = lead.date ? Math.floor((Date.now() - new Date(lead.date)) / 86400000) : 0;
+  let tempHtml = '';
+  if (lead.score >= 70 && daysOld <= 7) tempHtml = '<span class="temp-hot" title="Lead caliente">🔥</span>';
+  else if (lead.score >= 40 && daysOld <= 14) tempHtml = '<span class="temp-warm" title="Lead tibio">🟡</span>';
+  else if (daysOld > 21) tempHtml = '<span class="temp-cold" title="Lead frío">🧊</span>';
+
+  const statusDate = lead.status_date || lead.date;
+  const daysInStatus = statusDate ? Math.floor((Date.now() - new Date(statusDate)) / 86400000) : 0;
+  const dayClass = daysInStatus <= 3 ? 'days-ok' : daysInStatus >= 10 ? 'days-warn' : '';
+  const daysBadge = `<span class="days-badge ${dayClass}" title="Días en este estado">${daysInStatus}d</span>`;
+  const srcLabels = { search: '🔵', import: '🟡', propio: '🟣', manual: '🟢' };
+  const srcEmoji = srcLabels[lead.source || 'manual'] || '🟢';
+  const tagsHtml = (lead.tags || []).slice(0, 2).map(t => `<span class="lead-tag">${t}</span>`).join('');
+  const coverageMission = lead.coverageMission || (lead.coverageMissionLabel ? {
+    label: lead.coverageMissionLabel,
+    location: lead.coverageLocation || '',
+    sector: lead.coverageSector || lead.segment || '',
+  } : null);
+  const coverageChip = coverageMission
+    ? `<button class="coverage-lead-chip" onclick="event.stopPropagation(); if(typeof openCoverageForLocation==='function')openCoverageForLocation('${String(coverageMission.location || '').replace(/'/g, "\\'")}'); else showView('coverage');" title="Abrir cobertura">${coverageMission.label || `${coverageMission.location} · ${coverageMission.sector}`}</button>`
+    : '';
+
+  let nextAlert = '';
+  if (lead.next_contact) {
+    const nc = new Date(lead.next_contact);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const diff = Math.floor((nc - today) / 86400000);
+    if (diff === 0) nextAlert = '<span style="color:var(--warning);font-size:.65rem;display:block">📅 Hoy</span>';
+    else if (diff < 0) nextAlert = '<span style="color:var(--danger);font-size:.65rem;display:block">⚠️ Vencido</span>';
+    else if (diff <= 2) nextAlert = `<span style="color:var(--primary);font-size:.65rem;display:block">📅 ${diff}d</span>`;
+  }
+
+  tr.className = isSelected ? 'selected-row' : '';
+  if (lead.status === 'No interesa') tr.style.opacity = '0.45';
+  tr.innerHTML = `
+    <td style="width:36px"><input type="checkbox" class="lead-cb" data-id="${lead.id}" ${isSelected ? 'checked' : ''} onchange="toggleLeadSelect(this)"></td>
+    <td>
+      <div class="lead-name">${tempHtml} ${lead.name}</div>
+      <div class="lead-company">${lead.company}</div>
+      ${coverageChip}
+      ${tagsHtml}
+      ${nextAlert}
+    </td>
+    <td>
+      <span style="font-size:.75rem;background:var(--glass);padding:2px 8px;border-radius:5px;color:var(--text-muted)">${srcEmoji} ${lead.segment}</span>
+      ${lead.budget ? `<div style="font-size:.68rem;color:var(--success);margin-top:2px">💰 ${lead.budget.toLocaleString('es-ES')}€</div>` : ''}
+    </td>
+    <td>
+      <div class="score-wrap">
+        <span class="score-badge ${bc}">${lead.score}</span>
+        <div class="score-bar-mini"><div class="score-bar-fill" style="width:${lead.score}%;background:${scoreColor}"></div></div>
+      </div>
+    </td>
+    <td><span class="status-${sc}"><span class="status-dot"></span>${lead.status}</span>${daysBadge}</td>
+    <td style="font-size:.78rem;color:var(--text-muted)">
+      <div style="display:flex;align-items:center;gap:.3rem;overflow:visible;min-width:0">
+        <span style="color:var(--text-dim);flex-shrink:0">✉️</span>
+        <input type="email"
+          value="${lead.email||''}"
+          placeholder="Añadir email..."
+          data-lead-id="${lead.id}"
+          class="inline-email-input"
+          onclick="event.stopPropagation()"
+          onblur="saveInlineEmail(this)"
+          onkeydown="if(event.key==='Enter'){this.blur();}"
+        >
+        <button onclick="event.stopPropagation(); const v=this.previousElementSibling?.value||''; if(v) copyToClipboard(v, 'Email: '+v); else showToast('⚠️ Sin email')" title="Copiar email al portapapeles" style="background:none;border:none;cursor:pointer;color:var(--text-dim);padding:1px 3px;border-radius:4px;flex-shrink:0;line-height:1;transition:color .15s" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-dim)'">⧉</button>
+      </div>
+      ${lead.phone ? `<div style="display:flex;align-items:center;gap:.35rem">📞 ${lead.phone}${lead.whatsapp ? ` <button onclick="openWhatsAppModal('${lead.id}',event)" title="Enviar WhatsApp" style="background:none;border:none;cursor:pointer;font-size:.85rem;padding:0;line-height:1;color:#25D366">💬</button>` : ''}</div>` : ''}
+    </td>
+    <td>
+      <div class="td-actions">
+        <button class="btn-action" onclick="openLeadDetail('${lead.id}')">Ver</button>
+        <button class="btn-action secondary" onclick="openLeadAttackPlan('${lead.id}')" title="Plan de ataque">Plan</button>
+        <button class="btn-action secondary" onclick="openCompetitiveSpyForLead('${lead.id}')" title="Espionaje competitivo">Spy</button>
+        <button class="btn-action secondary" onclick="openLeadDossier('${lead.id}')" title="Dossier PDF">PDF</button>
+        ${lead.email ? `<button class="btn-action" onclick="generateEmail('${lead.id}')">✉️</button>` : ''}
+        <button class="btn-action ai-btn" onclick="openAiEmailModal('${lead.id}')" title="Email IA">✨</button>
+        ${lead.whatsapp || lead.phone ? `<button class="btn-action" onclick="openWhatsAppModal('${lead.id}',event)" title="WhatsApp IA" style="color:#25D366">💬</button>` : ''}
+        <button class="btn-action" onclick="duplicateLead('${lead.id}')" title="Duplicar lead">⎘</button>
+        <button class="btn-action danger" onclick="deleteLead('${lead.id}')">✕</button>
+      </div>
+    </td>`;
+  tr.oncontextmenu = (e) => { e.preventDefault(); openCtxMenu(e, lead.id, 'table'); };
+  return tr;
+}
+
+async function renderLeads() {
   saveFilters();
   renderCoverageLeadScopeBar();
   const tbody = document.getElementById('leads-body');
   const empty = document.getElementById('leads-empty');
   if (!tbody) return;
-  const list = getFilteredLeads();
+  const filters = getLeadFilterState();
+  const signature = getLeadFilterSignature(filters);
+  let list = null;
+  const worker = getLeadComputeWorker();
+  if (worker) {
+    const workerResult = await computeFilteredLeadsWithWorker(filters, signature);
+    if (workerResult && workerResult.requestId !== _leadWorkerPendingRequest) return;
+    if (workerResult) {
+      _filteredLeadsCache = {
+        signature: workerResult.signature,
+        list: workerResult.list,
+        totalActive: workerResult.totalActive,
+        activeFilters: workerResult.activeFilters
+      };
+      list = workerResult.list;
+    }
+  }
+  if (!Array.isArray(list)) {
+    list = getFilteredLeads();
+  }
   tbody.innerHTML = '';
   if (!list.length) {
     document.getElementById('no-email-banner')?.remove();
@@ -336,6 +593,16 @@ function renderLeads() {
     banner.innerHTML = `⚠️ <span style="color:var(--danger)">${noEmail.length} leads sin email</span> — sin email no se puede generar el email IA. <button class="btn-action" onclick="filterNoEmail()">Ver</button> <button onclick="this.parentNode.remove()" style="margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer">✕</button>`;
     tbody.parentNode.parentNode.insertBefore(banner, tbody.parentNode);
   }
+
+  const pageInfo = getVisibleLeadsPage(list);
+  renderLeadsPagination(list.length, pageInfo);
+  updateLeadsCountBar(list.length, _filteredLeadsCache.totalActive, _filteredLeadsCache.activeFilters, pageInfo);
+  const fastFragment = document.createDocumentFragment();
+  pageInfo.pageList.forEach(lead => fastFragment.appendChild(buildLeadRow(lead)));
+  tbody.appendChild(fastFragment);
+  return;
+}
+/*
 
   // Pagination — show LEADS_PAGE_SIZE leads per page for performance
   const totalLeads  = list.length;
@@ -479,6 +746,7 @@ function renderLeads() {
 
 // Activa/desactiva el botón de copiar email en el modal de detalle
 // según si el input tiene contenido. Se llama desde oninput del campo email.
+*/
 function updateDetailEmailBtn(input) {
   const btn = document.getElementById('detail-email-copy-btn');
   if (!btn) return;
@@ -559,6 +827,13 @@ function filterNoEmail() {
   document.getElementById('filter-status').value = '';
   document.getElementById('filter-segment').value = '';
   document.getElementById('lead-search').value = '';
+  _leadViewPreset = 'no_email';
+  leadsPage = 0;
+  invalidateLeadFilterCache();
+  renderLeads();
+  return;
+}
+/*
   // Filter visually — show only no-email
   const list = leads.filter(l => !l.archived && !l.email);
   const tbody = document.getElementById('leads-body');
@@ -574,6 +849,7 @@ function filterNoEmail() {
   }).join('');
 }
 
+*/
 function addActivityLog(leadId, action) {
   const lead = leads.find(l => l.id == leadId);
   if (!lead) return;

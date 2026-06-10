@@ -1,5 +1,6 @@
 ﻿// ============ INIT ============
 document.addEventListener('DOMContentLoaded', () => {
+  const bootToken = typeof window.gordiPerfBegin === 'function' ? window.gordiPerfBegin('boot:DOMContentLoaded') : null;
   checkPin();
   populateSegmentDropdowns(); // Poblar dropdowns antes de cargar datos que puedan depender de ellos
   const migrationResult = tryAutoMigrate();
@@ -16,8 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   updateDate();
   runStartupTask('dashboard-visible', () => {
+    if (typeof queueDashboardProgressiveRender === 'function') {
+      queueDashboardProgressiveRender('startup');
+      return;
+    }
     updateStats();
-    renderDashboardCharts();
     renderRecentActivity();
     renderTopLeads();
     renderTodayPanel();
@@ -106,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // MEJORA: Sistema de Actualizaciones Autom?tico via version.json
   checkUpdates({ migrationResult, recoverySummary });
   window.__gordiBootReady = true;
+  if (typeof window.gordiPerfEnd === 'function') window.gordiPerfEnd(bootToken, { safeMode: !!window.GORDI_SAFE_MODE });
 
   // Auto-pull JSONBin al iniciar si est? habilitado
   if (localStorage.getItem('gordi_jsonbin_auto') === 'true') {
@@ -118,7 +123,11 @@ document.addEventListener('DOMContentLoaded', () => {
 function runStartupTask(name, fn, delay) {
   setTimeout(() => {
     try {
-      fn();
+      if (typeof window.gordiPerfMeasure === 'function') {
+        window.gordiPerfMeasure(`startup:${name}`, fn, { delay: delay || 0, safeMode: !!window.GORDI_SAFE_MODE });
+      } else {
+        fn();
+      }
     } catch (err) {
       console.error(`Error en arranque diferido (${name}):`, err);
       try {
@@ -132,7 +141,11 @@ function runIdleStartupTask(name, fn, delay) {
   runStartupTask(name, () => {
     const run = () => {
       try {
-        fn();
+        if (typeof window.gordiPerfMeasure === 'function') {
+          window.gordiPerfMeasure(`startup-idle:${name}`, fn, { safeMode: !!window.GORDI_SAFE_MODE });
+        } else {
+          fn();
+        }
       } catch (err) {
         console.error(`Error en arranque idle (${name}):`, err);
         try {
@@ -181,8 +194,13 @@ function scheduleRender(key) {
       if (toRun.has('leads'))    renderLeads();
       if (toRun.has('kanban'))   renderKanban();
       if (toRun.has('stats'))    updateStats();
-      if (toRun.has('tracking')) renderTracking();
-      if (toRun.has('charts'))   { try { renderDashboardCharts(); } catch(e){} }
+      if (toRun.has('tracking') && (!('isViewActive' in window) || isViewActive('tracking'))) renderTracking();
+      if (toRun.has('charts'))   {
+        try {
+          if (typeof queueDashboardProgressiveRender === 'function' && (!('isViewActive' in window) || isViewActive('dashboard'))) queueDashboardProgressiveRender('batched');
+          else if (!('isViewActive' in window) || isViewActive('dashboard')) renderDashboardCharts();
+        } catch(e){}
+      }
     });
   }
 }
@@ -585,10 +603,14 @@ function restoreSafetySnapshot(id) {
 
 function reloadDataFromStorage() {
   if (typeof loadAllData === 'function') loadAllData();
-  if (typeof renderAll === 'function') renderAll();
-  if (typeof renderDashboardCharts === 'function') renderDashboardCharts();
-  if (typeof renderTracking === 'function') renderTracking();
-  if (typeof renderCampaigns === 'function') renderCampaigns();
+  if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('reload-storage');
+  if (typeof refreshDataDependentViews === 'function') refreshDataDependentViews({ reason: 'reload-storage' });
+  else {
+    if (typeof renderAll === 'function') renderAll();
+    if (typeof renderDashboardCharts === 'function' && (!('isViewActive' in window) || isViewActive('dashboard'))) renderDashboardCharts();
+    if (typeof renderTracking === 'function' && (!('isViewActive' in window) || isViewActive('tracking'))) renderTracking();
+    if (typeof renderCampaigns === 'function' && (!('isViewActive' in window) || isViewActive('campaigns'))) renderCampaigns();
+  }
   if (typeof renderTemplateList === 'function') renderTemplateList();
   if (typeof updateStorageInfo === 'function') updateStorageInfo();
 }
@@ -991,6 +1013,13 @@ function notifyViewChanged(view) {
 // ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ ⬢ 
 
 function showView(view) {
+  const viewPerfToken = typeof window.gordiPerfBegin === 'function'
+    ? window.gordiPerfBegin(`view:${view}`, {
+        safeMode: !!window.GORDI_SAFE_MODE,
+        leads: Array.isArray(leads) ? leads.length : 0,
+        results: Array.isArray(window.tempSearchResults) ? window.tempSearchResults.length : 0
+      })
+    : null;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const target = document.getElementById(`${view}-view`);
   if (!target) {
@@ -1001,6 +1030,11 @@ function showView(view) {
     notifyViewChanged('dashboard');
     requestAnimationFrame(() => {
       if (typeof refreshVisualSystem === 'function') refreshVisualSystem();
+      setTimeout(() => {
+        if (typeof window.gordiPerfEnd === 'function') {
+          window.gordiPerfEnd(viewPerfToken, { fallback: 'dashboard' });
+        }
+      }, 0);
     });
     console.warn('Vista no encontrada:', view);
     return;
@@ -1025,7 +1059,14 @@ function showView(view) {
     renderSearchHistory();
     updateStorageInfo();
   }
-  if (view === 'dashboard') { renderDashboardCharts(); renderRecentActivity(); renderTopLeads(); if (typeof renderTodayPanel === 'function') renderTodayPanel(); }
+  if (view === 'dashboard') {
+    if (typeof queueDashboardProgressiveRender === 'function') queueDashboardProgressiveRender('view');
+    else {
+      renderRecentActivity();
+      renderTopLeads();
+      if (typeof renderTodayPanel === 'function') renderTodayPanel();
+    }
+  }
 
   closeMobileChromeAfterNavigation();
   const main = document.querySelector('main');
@@ -1034,6 +1075,11 @@ function showView(view) {
   notifyViewChanged(view);
   requestAnimationFrame(() => {
     if (typeof refreshVisualSystem === 'function') refreshVisualSystem();
+    setTimeout(() => {
+      if (typeof window.gordiPerfEnd === 'function') {
+        window.gordiPerfEnd(viewPerfToken);
+      }
+    }, 0);
   });
 }
 
@@ -1258,9 +1304,13 @@ async function jsonbinPull(showFeedback = true) {
     // Reload all data through the same tolerant loader used at startup.
     loadAllData();
 
-    renderAll();
-    try { renderTracking(); } catch(e) {}
-    try { renderDashboardCharts(); } catch(e) {}
+    if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('jsonbin-pull');
+    if (typeof refreshDataDependentViews === 'function') refreshDataDependentViews({ reason: 'jsonbin-pull' });
+    else {
+      renderAll();
+      try { if (!('isViewActive' in window) || isViewActive('tracking')) renderTracking(); } catch(e) {}
+      try { if (!('isViewActive' in window) || isViewActive('dashboard')) renderDashboardCharts(); } catch(e) {}
+    }
 
     const now = new Date().toLocaleTimeString('es-ES', { hour:'2-digit', minute:'2-digit' });
     if (showFeedback) {

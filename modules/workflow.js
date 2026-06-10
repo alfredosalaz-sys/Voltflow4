@@ -680,15 +680,18 @@
 
   function renderWorkflowPanels() {
     if (document.hidden) return;
+    const activeView = document.querySelector('.view.active')?.id || '';
     ensureWorkflowPanels();
-    renderWorkflowCommandCenter();
     renderMissionBar();
-    renderWorkflowPostScrapingPanel();
-    renderCoverageFunnelBoard();
-    renderLeadOriginSummary();
-    renderMapBrief();
-    renderHealthCenter();
-    renderRestorePanel();
+    if (activeView === 'dashboard-view') renderWorkflowCommandCenter();
+    if (activeView === 'planner-view') renderWorkflowPostScrapingPanel();
+    if (activeView === 'coverage-view') renderCoverageFunnelBoard();
+    if (activeView === 'leads-view') renderLeadOriginSummary();
+    if (activeView === 'map-view') renderMapBrief();
+    if (activeView === 'settings-view') {
+      renderHealthCenter();
+      renderRestorePanel();
+    }
   }
 
   function scheduleWorkflowPanels(delay = 120) {
@@ -776,8 +779,12 @@
       return true;
     }, () => scheduleWorkflowPanels(120));
 
-    wrapFunction('renderSearchCards', null, () => setTimeout(renderWorkflowPostScrapingPanel, 40));
-    wrapFunction('showResultsPanel', null, () => setTimeout(renderWorkflowPostScrapingPanel, 40));
+    wrapFunction('renderSearchCards', null, () => {
+      if (document.getElementById('planner-view')?.classList.contains('active')) setTimeout(renderWorkflowPostScrapingPanel, 40);
+    });
+    wrapFunction('showResultsPanel', null, () => {
+      if (document.getElementById('planner-view')?.classList.contains('active')) setTimeout(renderWorkflowPostScrapingPanel, 40);
+    });
     wrapFunction('renderCoverage', null, () => scheduleWorkflowPanels(80));
     wrapFunction('renderLeads', null, () => setTimeout(renderLeadOriginSummary, 60));
     wrapFunction('setMapMode', null, () => setTimeout(renderMapBrief, 60));

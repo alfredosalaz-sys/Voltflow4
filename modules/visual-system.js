@@ -6,6 +6,8 @@
   window.__gordiVisualSystemBooted = true;
 
   let triageIndex = 0;
+  let visualRefreshTimer = null;
+  let visualRefreshQueued = false;
   const ICONS = {
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
     map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18 3 21V6l6-3 6 3 6-3v15l-6 3-6-3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></svg>',
@@ -514,6 +516,21 @@
     results.prepend(wrap);
   }
 
+  function scheduleVisualRefresh(delay = 90) {
+    if (visualRefreshQueued) return;
+    visualRefreshQueued = true;
+    if (visualRefreshTimer) clearTimeout(visualRefreshTimer);
+    visualRefreshTimer = setTimeout(() => {
+      visualRefreshQueued = false;
+      visualRefreshTimer = null;
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => refreshVisualSystem(), { timeout: 1200 });
+      } else {
+        setTimeout(() => refreshVisualSystem(), 40);
+      }
+    }, delay);
+  }
+
   function getCommandItems(q) {
     const items = [
       { title: 'Buscar empresas', desc: 'Ir a prospeccion y lanzar busqueda', icon: 'search', keywords: 'buscar scraping prospeccion empresas', action: "showView('planner');setTimeout(()=>document.getElementById('plan-location')?.focus(),80)" },
@@ -656,9 +673,13 @@
   }
 
   function normalizeVisibleControls() {
-    document.querySelectorAll('.btn-primary').forEach(btn => btn.classList.add('ui-btn'));
-    document.querySelectorAll('.btn-outline').forEach(btn => btn.classList.add('ui-btn'));
-    document.querySelectorAll('.glass-panel').forEach(panel => panel.classList.add('ui-panel'));
+    const activeView = document.querySelector('.view.active');
+    const scopes = [activeView, qs('ops-status-layer'), qs('workflow-mission-bar'), qs('mission-bar'), qs('global-search-overlay')].filter(Boolean);
+    scopes.forEach(scope => {
+      scope.querySelectorAll?.('.btn-primary').forEach(btn => btn.classList.add('ui-btn'));
+      scope.querySelectorAll?.('.btn-outline').forEach(btn => btn.classList.add('ui-btn'));
+      scope.querySelectorAll?.('.glass-panel').forEach(panel => panel.classList.add('ui-panel'));
+    });
   }
 
   function registerVisualTourFeatures() {
@@ -712,17 +733,22 @@
   }
 
   function refreshVisualSystem() {
+    const activeView = getActiveView();
     renderOpsStatusLayer();
     renderMissionBar();
-    renderDashboardCommandDeck();
-    decorateSearchConsole();
-    renderResultsDecisionBar();
-    decorateCardsAndStates();
-    decorateLeadConfidenceAndTimeline();
-    normalizeResultIcons();
-    decorateCoverageAndMap();
+    if (activeView === 'dashboard') renderDashboardCommandDeck();
+    if (activeView === 'planner') {
+      decorateSearchConsole();
+      renderResultsDecisionBar();
+      decorateCardsAndStates();
+      normalizeResultIcons();
+    }
+    if (activeView === 'leads' || activeView === 'kanban' || qs('lead-drawer-body')) {
+      decorateLeadConfidenceAndTimeline();
+    }
+    if (activeView === 'coverage' || activeView === 'map') decorateCoverageAndMap();
     normalizeVisibleControls();
-    renderCommandPalette();
+    if (qs('global-search-overlay')?.style.display !== 'none') renderCommandPalette();
   }
 
   function wrapRender(name) {
@@ -730,7 +756,7 @@
     if (typeof original !== 'function' || original.__visualWrapped) return;
     const wrapped = function (...args) {
       const result = original.apply(this, args);
-      setTimeout(refreshVisualSystem, 60);
+      scheduleVisualRefresh(80);
       return result;
     };
     wrapped.__visualWrapped = true;
@@ -766,11 +792,14 @@
     wrapBusy('searchBusinesses', 'Ejecutando scraping...');
     wrapBusy('searchBusinessesMultiSector', 'Ejecutando multibusqueda...');
     wrapBusy('importSelectedSearch', 'Importando a Leads...');
-    ['change', 'input', 'click', 'gordi:flow'].forEach(type => document.addEventListener(type, () => setTimeout(refreshVisualSystem, 80), true));
-    document.addEventListener('gordi:view-changed', () => setTimeout(refreshVisualSystem, 40));
+    window.addEventListener('gordi:flow', () => scheduleVisualRefresh(120));
+    document.addEventListener('gordi:view-changed', () => scheduleVisualRefresh(40));
     document.addEventListener('input', event => {
       if (event.target?.id === 'global-search-input') setTimeout(() => renderCommandPalette(event.target.value), 30);
     }, true);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) scheduleVisualRefresh(120);
+    });
     document.addEventListener('keydown', event => {
       if (qs('triage-modal')?.style.display !== 'flex') return;
       if (event.key === 'Escape') closeTriageMode();
@@ -779,8 +808,7 @@
       if (event.key.toLowerCase() === 'a') triageAccept();
       if (event.key.toLowerCase() === 'd') triageDiscard();
     });
-    refreshVisualSystem();
-    setInterval(refreshVisualSystem, 5000);
+    scheduleVisualRefresh(60);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootVisualSystem, { once: true });

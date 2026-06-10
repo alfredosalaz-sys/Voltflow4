@@ -9,6 +9,31 @@
   <meta http-equiv="Expires" content="0">
   <title>Voltium CRM</title>
   <script>
+    (function setupSafeMode() {
+      try {
+        var params = new URLSearchParams(location.search);
+        if (params.get('safe') === '0') localStorage.removeItem('gordi_safe_mode');
+        if (params.get('safe') === '1') localStorage.setItem('gordi_safe_mode', '1');
+        window.GORDI_SAFE_MODE = params.get('safe') === '1' || localStorage.getItem('gordi_safe_mode') === '1';
+        window.setGordiSafeMode = function(enabled, reason, options) {
+          options = options || {};
+          try {
+            if (enabled) localStorage.setItem('gordi_safe_mode', '1');
+            else localStorage.removeItem('gordi_safe_mode');
+            if (reason) localStorage.setItem('gordi_safe_mode_reason', String(reason));
+          } catch (e) {}
+          window.GORDI_SAFE_MODE = !!enabled;
+          if (options.reload) {
+            var url = new URL(location.href);
+            if (enabled) url.searchParams.set('safe', '1');
+            else url.searchParams.delete('safe');
+            location.replace(url.toString());
+          }
+        };
+      } catch (e) {
+        window.GORDI_SAFE_MODE = false;
+      }
+    })();
     window.GORDI_APP_BUILD = '2026.06.04.0320';
     (function guardFreshBuild() {
       try {
@@ -284,6 +309,20 @@
         </div>
       </div>
       <div id="daily-copilot-content" style="display:grid;gap:.75rem;margin-top:.75rem"></div>
+    </div>
+
+    <div class="glass-panel" id="technical-health-panel" style="margin-top:1rem">
+      <div class="panel-header">
+        <div>
+          <h3>Estado técnico</h3>
+          <span style="font-size:.72rem;color:var(--text-muted)">Rendimiento, modo seguro y último fallback</span>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn-outline btn-sm" onclick="showPerformanceDiagnostics && showPerformanceDiagnostics()">Ver diagnóstico</button>
+          <button class="btn-outline btn-sm" onclick="setGordiSafeMode && setGordiSafeMode(!window.GORDI_SAFE_MODE, window.GORDI_SAFE_MODE ? 'manual-disable-safe' : 'manual-enable-safe', { reload: true })">Cambiar modo</button>
+        </div>
+      </div>
+      <div id="technical-health-content" style="display:grid;gap:.75rem;margin-top:.75rem"></div>
     </div>
 
     <!-- Alerta inteligente de scoring -->
@@ -2499,9 +2538,13 @@ Y cruzará los remitentes con tus leads para actualizar el CRM."
           '<h2 style="margin:0 0 10px;font-size:24px">La aplicacion no termino de arrancar</h2>' +
           '<p style="margin:0 0 14px;color:#cbd5e1;line-height:1.55">Tus datos locales no se han borrado. En algunos equipos GitHub puede servir una mezcla de archivos cacheados o el navegador puede tardar demasiado al leer muchos datos guardados.</p>' +
           '<p style="margin:0 0 14px;color:#e2e8f0;font-size:13px"><strong>Motivo detectado:</strong> ' + esc(reason) + '</p>' +
+          '<p style="margin:0 0 14px;color:#93c5fd;font-size:12px">Modo seguro actual: <strong>' + (window.GORDI_SAFE_MODE ? 'activo' : 'desactivado') + '</strong></p>' +
           (details ? '<ul style="margin:0 0 16px;padding-left:18px;color:#fca5a5;font-size:12px;line-height:1.5">' + details + '</ul>' : '') +
           '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
             '<button onclick="location.href=location.pathname + \'?build=\' + Date.now()" style="border:0;background:#38bdf8;color:#03111f;border-radius:999px;padding:11px 16px;font-weight:700;cursor:pointer">Recargar version limpia</button>' +
+            (window.GORDI_SAFE_MODE
+              ? '<button onclick="setGordiSafeMode(false, \'manual-disable-safe\', { reload: true })" style="border:1px solid rgba(148,163,184,.45);background:rgba(56,189,248,.08);color:#f8fafc;border-radius:999px;padding:11px 16px;font-weight:700;cursor:pointer">Salir de modo seguro</button>'
+              : '<button onclick="setGordiSafeMode(true, \'boot-rescue\', { reload: true })" style="border:1px solid rgba(148,163,184,.45);background:rgba(56,189,248,.08);color:#f8fafc;border-radius:999px;padding:11px 16px;font-weight:700;cursor:pointer">Abrir en modo seguro</button>') +
             '<button onclick="location.reload()" style="border:1px solid rgba(148,163,184,.45);background:transparent;color:#f8fafc;border-radius:999px;padding:11px 16px;font-weight:700;cursor:pointer">Reintentar</button>' +
           '</div>' +
         '</div>';
@@ -2517,24 +2560,44 @@ Y cruzará los remitentes con tus leads para actualizar el CRM."
       if (!window.__gordiBootReady) setTimeout(function() { showBootRescue('promesa rechazada durante el arranque'); }, 800);
     });
     setTimeout(function() {
+      if (window.__gordiBootReady) return;
+      if (!window.GORDI_SAFE_MODE && typeof window.setGordiSafeMode === 'function') {
+        window.setGordiSafeMode(true, 'boot-timeout', { reload: true });
+        return;
+      }
       showBootRescue('arranque superior a 20 segundos');
     }, 20000);
   })();
 </script>
 <script defer src="modules/state.js?v=2026.06.04.0320" charset="UTF-8"></script>
-<script defer src="modules/tour-registry.js?v=2026.06.04.0320" charset="UTF-8"></script>
+<script defer src="modules/performance-monitor.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/email-templates.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/scoring.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/init.js?v=2026.06.04.0320" charset="UTF-8"></script>
-<script defer src="modules/flow-events.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/search.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/leads.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/dashboard.js?v=2026.06.04.0320" charset="UTF-8"></script>
-<script defer src="modules/visual-system.js?v=2026.06.04.0320" charset="UTF-8"></script>
-<script defer src="modules/module-loader.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/ui.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/ai-router.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/misc.js?v=2026.06.04.0320" charset="UTF-8"></script>
+<script>
+  (function loadOptionalRuntimeModules() {
+    if (window.GORDI_SAFE_MODE) return;
+    var build = window.GORDI_APP_BUILD || Date.now();
+    [
+      'modules/tour-registry.js?v=' + build,
+      'modules/flow-events.js?v=' + build,
+      'modules/visual-system.js?v=' + build,
+      'modules/module-loader.js?v=' + build
+    ].forEach(function(src) {
+      var script = document.createElement('script');
+      script.src = src;
+      script.charset = 'UTF-8';
+      script.async = false;
+      document.body.appendChild(script);
+    });
+  })();
+</script>
 
 </body>
 </html>

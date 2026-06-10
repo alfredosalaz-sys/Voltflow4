@@ -1,17 +1,65 @@
 ﻿// ============ STATS ============
 function updateStats() {
+  const summary = getDashboardAggregateSummary();
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
-  set('stat-total', leads.filter(l => !l.archived).length);
-  set('stat-high', leads.filter(l => !l.archived && l.score >= 70).length);
-  set('stat-pending', leads.filter(l => !l.archived && l.status === 'Pendiente').length);
-  set('stat-sent', emailHistory.length);
-  set('stat-sent2', emailHistory.length);
-  set('stat-contacted', [...new Set(emailHistory.map(h => h.email.toLowerCase()))].length);
-  set('stat-waiting', emailHistory.filter(h => h.status === 'Visita').length);
+  set('stat-total', summary.activeCount);
+  set('stat-high', summary.highScoreCount);
+  set('stat-pending', summary.pendingCount);
+  set('stat-sent', summary.emailCount);
+  set('stat-sent2', summary.emailCount);
+  set('stat-contacted', summary.uniqueContactedCount);
+  set('stat-waiting', summary.waitingCount);
+}
+
+let _dashboardAggregateCache = { dirty: true, summary: null, version: 0 };
+
+function markDashboardAggregatesDirty(reason = '') {
+  _dashboardAggregateCache.dirty = true;
+  _dashboardAggregateCache.version += 1;
+  _dashboardAggregateCache.reason = reason;
+}
+
+function getDashboardAggregateSummary() {
+  if ((_dashboardAggregateCache.lastLeadCount || 0) !== leads.length || (_dashboardAggregateCache.lastEmailCount || 0) !== emailHistory.length) {
+    _dashboardAggregateCache.dirty = true;
+  }
+  if (!_dashboardAggregateCache.dirty && _dashboardAggregateCache.summary) {
+    return _dashboardAggregateCache.summary;
+  }
+  const activeLeads = leads.filter(l => !l.archived);
+  const contactedEmails = new Set();
+  emailHistory.forEach(h => {
+    if (h?.email) contactedEmails.add(String(h.email).toLowerCase());
+  });
+  const segmentStats = {};
+  activeLeads.forEach(l => {
+    const segment = l.segment || 'Sin segmento';
+    if (!segmentStats[segment]) segmentStats[segment] = { total: 0, contacted: 0, responded: 0, totalScore: 0 };
+    segmentStats[segment].total += 1;
+    segmentStats[segment].totalScore += Number(l.score || 0);
+    if (['Contactado','Respuesta del cliente','Visita','Entrega de presupuesto','Cerrado'].includes(l.status)) segmentStats[segment].contacted += 1;
+    if (['Respuesta del cliente','Visita','Entrega de presupuesto','Cerrado'].includes(l.status)) segmentStats[segment].responded += 1;
+  });
+  const summary = {
+    activeLeads,
+    activeCount: activeLeads.length,
+    highScoreCount: activeLeads.filter(l => Number(l.score || 0) >= 70).length,
+    pendingCount: activeLeads.filter(l => l.status === 'Pendiente').length,
+    emailCount: emailHistory.length,
+    uniqueContactedCount: contactedEmails.size,
+    waitingCount: emailHistory.filter(h => h.status === 'Visita').length,
+    segmentStats
+  };
+  _dashboardAggregateCache.summary = summary;
+  _dashboardAggregateCache.dirty = false;
+  _dashboardAggregateCache.lastLeadCount = leads.length;
+  _dashboardAggregateCache.lastEmailCount = emailHistory.length;
+  return summary;
 }
 
 function getDashboardPrioritySnapshot() {
-  const activeLeads = leads.filter(l => !l.archived);
+  const summary = getDashboardAggregateSummary();
+  const activeLeads = summary.activeLeads;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const urgent = activeLeads.filter(l => l.status === 'Pendiente' && (l.score || 0) >= 75);
@@ -54,6 +102,112 @@ function dashboardSetLeadFilters(config = {}) {
     const el = document.getElementById(id);
     if (el) el.value = value;
   });
+}
+
+let _dashboardProgressiveTimers = {};
+
+function clearDashboardProgressiveTimers() {
+  Object.keys(_dashboardProgressiveTimers).forEach(key => {
+    clearTimeout(_dashboardProgressiveTimers[key]);
+    delete _dashboardProgressiveTimers[key];
+  });
+}
+
+function scheduleDashboardStage(key, fn, delay) {
+  clearTimeout(_dashboardProgressiveTimers[key]);
+  _dashboardProgressiveTimers[key] = setTimeout(() => {
+    delete _dashboardProgressiveTimers[key];
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => fn(), { timeout: 1800 });
+    } else {
+      setTimeout(fn, 60);
+    }
+  }, delay);
+}
+
+function renderTechnicalHealthPanel() {
+  const container = document.getElementById('technical-health-content');
+  if (!container) return;
+  const diag = typeof window.getGordiPerfDiagnostic === 'function' ? window.getGordiPerfDiagnostic() : null;
+  const summary = typeof window.getGordiPerfSummary === 'function' ? window.getGordiPerfSummary().slice(0, 4) : [];
+  const cards = [
+    {
+      label: 'Modo',
+      value: window.GORDI_SAFE_MODE ? 'Seguro' : 'Normal',
+      hint: window.GORDI_SAFE_MODE ? 'Capas pesadas desactivadas' : 'Experiencia completa'
+    },
+    {
+      label: 'Último fallback',
+      value: diag?.reason || 'Ninguno',
+      hint: diag?.at ? new Date(diag.at).toLocaleString('es-ES') : 'Sin rescate reciente'
+    },
+    {
+      label: 'Arranque',
+      value: (summary.find(item => item.name === 'boot:DOMContentLoaded')?.max || 0) + 'ms',
+      hint: 'Tiempo máximo registrado'
+    },
+    {
+      label: 'Leadset',
+      value: `${leads.length} leads`,
+      hint: leads.length > 900 ? 'Carga grande: dashboard aligerado' : 'Carga normal'
+    }
+  ];
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem">
+      ${cards.map(card => `
+        <div style="padding:.85rem 1rem;border:1px solid var(--glass-border);border-radius:12px;background:rgba(255,255,255,.03);display:grid;gap:.25rem">
+          <span style="font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim)">${card.label}</span>
+          <strong style="font-size:.96rem;color:var(--text)">${card.value}</strong>
+          <span style="font-size:.72rem;color:var(--text-muted)">${card.hint}</span>
+        </div>`).join('')}
+    </div>
+    ${summary.length ? `<div style="display:grid;gap:.35rem;margin-top:.25rem">${summary.map(item => `
+      <div style="display:grid;grid-template-columns:minmax(150px,1fr) 70px 70px 60px;gap:.5rem;font-size:.74rem;color:var(--text-muted)">
+        <strong style="color:var(--text)">${item.name}</strong>
+        <span>avg ${item.avg}ms</span>
+        <span>max ${item.max}ms</span>
+        <span>n=${item.count}</span>
+      </div>`).join('')}</div>` : ''}
+  `;
+}
+
+function queueDashboardProgressiveRender(reason = 'default') {
+  clearDashboardProgressiveTimers();
+  const runPrimary = () => {
+    updateStats();
+    renderRecentActivity();
+    renderTechnicalHealthPanel();
+    if (typeof renderDashboardCharts === 'function') renderDashboardCharts('primary');
+  };
+  const runSecondary = () => {
+    if (typeof renderDashboardCharts === 'function') renderDashboardCharts('secondary');
+    renderTechnicalHealthPanel();
+  };
+  const runHeavy = () => {
+    if (typeof renderDashboardCharts === 'function') renderDashboardCharts('full');
+    renderTechnicalHealthPanel();
+  };
+
+  if (typeof window.gordiPerfMeasure === 'function') {
+    window.gordiPerfMeasure(`dashboard:stage-primary:${reason}`, runPrimary, { leads: leads.length, safeMode: !!window.GORDI_SAFE_MODE });
+  } else {
+    runPrimary();
+  }
+  scheduleDashboardStage('secondary', () => {
+    if (typeof window.gordiPerfMeasure === 'function') {
+      window.gordiPerfMeasure(`dashboard:stage-secondary:${reason}`, runSecondary, { leads: leads.length, safeMode: !!window.GORDI_SAFE_MODE });
+    } else {
+      runSecondary();
+    }
+  }, 240);
+  scheduleDashboardStage('heavy', () => {
+    if (window.GORDI_SAFE_MODE) return;
+    if (typeof window.gordiPerfMeasure === 'function') {
+      window.gordiPerfMeasure(`dashboard:stage-heavy:${reason}`, runHeavy, { leads: leads.length, safeMode: !!window.GORDI_SAFE_MODE });
+    } else {
+      runHeavy();
+    }
+  }, leads.length > 900 ? 2200 : 1200);
 }
 
 function dashboardBridge(action) {
@@ -160,10 +314,9 @@ function renderPriorityControlCenter() {
 // 🏛️ ARQUITECTURA: Escuchar cambios globales
 if (typeof VoltiumEvents !== 'undefined') {
     VoltiumEvents.on('state:changed', () => {
-        updateStats();
-        renderDashboardCharts();
-        renderRecentActivity();
-        renderTopLeads();
+        debouncedRender('dashboard-state', () => {
+          queueDashboardProgressiveRender('state');
+        }, 140);
     });
 }
 
@@ -172,8 +325,11 @@ if (typeof VoltiumEvents !== 'undefined') {
 function renderSegmentChart() {
   const container = document.getElementById('segment-chart');
   if (!container) return;
+  const summary = getDashboardAggregateSummary();
   const counts = {};
-  leads.forEach(l => counts[l.segment] = (counts[l.segment] || 0) + 1);
+  Object.entries(summary.segmentStats).forEach(([segment, stats]) => {
+    counts[segment] = stats.total;
+  });
   const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]);
   const max = sorted[0]?.[1] || 1;
   container.innerHTML = sorted.length
@@ -190,47 +346,55 @@ function renderSegmentChart() {
 function renderTopLeads() {
   const container = document.getElementById('top-leads-list');
   if (!container) return;
+  const measure = () => {
+    const useCachedScores = window.GORDI_SAFE_MODE || leads.length > 500;
+    const summary = getDashboardAggregateSummary();
+    const candidates = summary.activeLeads.filter(l => l.status === 'Pendiente' || l.status === 'Contactado');
+    const top = candidates
+      .map(l => ({
+        lead: l,
+        score: useCachedScores ? Number(l.score || 0) : recalculateLeadScore(l)
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
 
-  // Recalcular scores con datos reales antes de ordenar
-  // NOTA: no llamar saveLeads() aquí — este es un render, no una mutación persistida.
-  // El recálculo masivo se hace en saveLeadDetail/saveLead donde ya hay un saveLeads().
-  leads.forEach(l => { l.score = recalculateLeadScore(l); });
+    if (!top.length) {
+      container.innerHTML = `
+        <p style="color:var(--text-muted);font-size:.83rem;margin-top:.5rem">No hay leads pendientes con prioridad operativa ahora mismo.</p>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem">
+          <button class="btn-action" onclick="dashboardBridge('search')">Buscar nuevas empresas</button>
+          <button class="btn-action" onclick="dashboardBridge('pipeline')">Revisar pipeline</button>
+        </div>`;
+      return;
+    }
 
-  const top = [...leads]
-    .filter(l => l.status === 'Pendiente' || l.status === 'Contactado')
-    .sort((a,b) => b.score - a.score)
-    .slice(0, 6);
+    container.innerHTML = top.map(entry => {
+      const l = entry.lead;
+      const score = entry.score;
+      const bc = score >= 70 ? 'badge-high' : (score >= 40 ? 'badge-mid' : 'badge-low');
+      const signals = [];
+      if (l.rating && l.rating < 4.2) signals.push(`<span class="intel-tag warn">⭐ ${l.rating}</span>`);
+      if (l.email) signals.push('<span class="intel-tag ok">✉️</span>');
+      if (l.phone) signals.push('<span class="intel-tag ok">📞</span>');
+      if (l.decision_maker && l.decision_maker !== 'Responsable') signals.push('<span class="intel-tag ok">👤</span>');
+      const daysSince = l.date ? Math.floor((Date.now()-new Date(l.date))/(1000*86400)) : 0;
+      if (daysSince > 7) signals.push(`<span class="intel-tag warn">${daysSince}d sin contacto</span>`);
 
-  if (!top.length) {
-    container.innerHTML = `
-      <p style="color:var(--text-muted);font-size:.83rem;margin-top:.5rem">No hay leads pendientes con prioridad operativa ahora mismo.</p>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem">
-        <button class="btn-action" onclick="dashboardBridge('search')">Buscar nuevas empresas</button>
-        <button class="btn-action" onclick="dashboardBridge('pipeline')">Revisar pipeline</button>
+      return `<div class="top-lead-item" onclick="openLeadDetail('${l.id}')">
+        <div class="top-lead-avatar" style="background:${SEGMENT_COLORS[l.segment]||'#5E5CE6'}22;color:${SEGMENT_COLORS[l.segment]||'#5E5CE6'}">${(l.company||'?')[0].toUpperCase()}</div>
+        <div style="flex:1;min-width:0">
+          <div class="top-lead-name">${l.company}</div>
+          <div class="top-lead-co">${l.segment}${signals.length ? ' · '+signals.join('') : ''}</div>
+        </div>
+        <span class="score-badge ${bc}">${score}</span>
       </div>`;
-    return;
+    }).join('');
+  };
+  if (typeof window.gordiPerfMeasure === 'function') {
+    window.gordiPerfMeasure('dashboard:top-leads', measure, { leads: leads.length, safeMode: !!window.GORDI_SAFE_MODE });
+  } else {
+    measure();
   }
-
-  container.innerHTML = top.map(l => {
-    const bc = l.score >= 70 ? 'badge-high' : (l.score >= 40 ? 'badge-mid' : 'badge-low');
-    // Señales visuales de por qué es prioritario
-    const signals = [];
-    if (l.rating && l.rating < 4.2) signals.push(`<span class="intel-tag warn">⭐ ${l.rating}</span>`);
-    if (l.email) signals.push('<span class="intel-tag ok">✉️</span>');
-    if (l.phone) signals.push('<span class="intel-tag ok">📞</span>');
-    if (l.decision_maker && l.decision_maker !== 'Responsable') signals.push('<span class="intel-tag ok">👤</span>');
-    const daysSince = l.date ? Math.floor((Date.now()-new Date(l.date))/(1000*86400)) : 0;
-    if (daysSince > 7) signals.push(`<span class="intel-tag warn">${daysSince}d sin contacto</span>`);
-
-    return `<div class="top-lead-item" onclick="openLeadDetail('${l.id}')">
-      <div class="top-lead-avatar" style="background:${SEGMENT_COLORS[l.segment]||'#5E5CE6'}22;color:${SEGMENT_COLORS[l.segment]||'#5E5CE6'}">${(l.company||'?')[0].toUpperCase()}</div>
-      <div style="flex:1;min-width:0">
-        <div class="top-lead-name">${l.company}</div>
-        <div class="top-lead-co">${l.segment}${signals.length ? ' · '+signals.join('') : ''}</div>
-      </div>
-      <span class="score-badge ${bc}">${l.score}</span>
-    </div>`;
-  }).join('');
 }
 
 // ── NIVEL 6: Métricas de conversión ──────────────────────────────────────────
@@ -238,22 +402,23 @@ function renderConversionMetrics() {
   const el = document.getElementById('conversion-metrics');
   if (!el) return;
 
-  const total = leads.length;
-  const contacted = leads.filter(l => ['Contactado','Respuesta del cliente','Visita','Entrega de presupuesto','Cerrado'].includes(l.status)).length;
-  const responded = leads.filter(l => ['Respuesta del cliente','Visita','Entrega de presupuesto','Cerrado'].includes(l.status)).length;
-  const closed = leads.filter(l => l.status === 'Cerrado').length;
+  const summary = getDashboardAggregateSummary();
+  const total = summary.activeCount;
+  const contacted = summary.activeLeads.filter(l => ['Contactado','Respuesta del cliente','Visita','Entrega de presupuesto','Cerrado'].includes(l.status)).length;
+  const responded = summary.activeLeads.filter(l => ['Respuesta del cliente','Visita','Entrega de presupuesto','Cerrado'].includes(l.status)).length;
+  const closed = summary.activeLeads.filter(l => l.status === 'Cerrado').length;
   const convRate = contacted ? Math.min(Math.round(responded/contacted*100), 100) : 0;
   const closeRate = responded ? Math.round(closed/responded*100) : 0;
   const avgScore = total ? Math.round(leads.reduce((s,l)=>s+l.score,0)/total) : 0;
 
   // Tiempo medio de respuesta
-  const sentLeads = leads.filter(l => l.status !== 'Pendiente' && l.date);
+  const sentLeads = summary.activeLeads.filter(l => l.status !== 'Pendiente' && l.date);
   const avgDays = sentLeads.length
     ? Math.round(sentLeads.reduce((s,l) => s + Math.floor((Date.now()-new Date(l.date))/(1000*86400)),0) / sentLeads.length)
     : 0;
 
   // MEJORA 1: Time-to-first-contact
-  const ttfcLeads = leads.filter(l => l.ttfc_hours != null);
+  const ttfcLeads = summary.activeLeads.filter(l => l.ttfc_hours != null);
   const avgTtfc = ttfcLeads.length
     ? Math.round(ttfcLeads.reduce((s,l) => s + l.ttfc_hours, 0) / ttfcLeads.length)
     : null;
@@ -284,21 +449,13 @@ function renderConversionMetrics() {
 // ── NIVEL 6: Rendimiento por sector ──────────────────────────────────────────
 function renderSectorPerformance() {
   const el = document.getElementById('sector-performance');
-  if (!el || !leads.length) {
+  const summary = getDashboardAggregateSummary();
+  if (!el || !summary.activeCount) {
     if (el) el.innerHTML = '<p style="color:var(--text-muted);font-size:.83rem">Sin datos todavía.</p>';
     return;
   }
 
-  const sectors = {};
-  leads.forEach(l => {
-    if (!sectors[l.segment]) sectors[l.segment] = { total:0, contacted:0, responded:0, totalScore:0 };
-    sectors[l.segment].total++;
-    sectors[l.segment].totalScore += l.score;
-    if (['Contactado','Respuesta del cliente','Visita','Entrega de presupuesto','Cerrado'].includes(l.status)) sectors[l.segment].contacted++;
-    if (['Respuesta del cliente','Visita','Entrega de presupuesto','Cerrado'].includes(l.status)) sectors[l.segment].responded++;
-  });
-
-  const sorted = Object.entries(sectors)
+  const sorted = Object.entries(summary.segmentStats)
     .map(([seg, d]) => ({ seg, ...d, avgScore: Math.round(d.totalScore/d.total), convRate: d.contacted ? Math.round(d.responded/d.contacted*100) : 0 }))
     .sort((a,b) => b.convRate - a.convRate);
 

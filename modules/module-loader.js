@@ -251,15 +251,6 @@
       idle(() => ensureGordiModule('diskBackup'), 30000, 60000);
     }
 
-    // Los tours siguen apareciendo por revision, sin bloquear el primer pintado.
-    idle(() => ensureGordiModule('help'), 2200, 10000);
-
-    // Cobertura y workflow forman parte del flujo principal scraping -> leads.
-    // Se cargan en segundo plano para que sus wrappers/auditoria existan aunque
-    // el usuario no abra sus paneles antes de buscar o importar.
-    idle(() => ensureGordiModule('coverage'), 2500, 12000);
-    idle(() => ensureGordiModule('workflow'), 4200, 15000);
-
     const chatBubble = document.getElementById('chat-bubble');
     if (chatBubble) {
       chatBubble.addEventListener('mouseenter', () => ensureGordiModule('chat'), { once: true });

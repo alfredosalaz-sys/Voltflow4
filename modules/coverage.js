@@ -1953,7 +1953,10 @@ function resolveCoverageSearchStage(mission, stats) {
 function renderCoveragePostScrapingPanel() {
   const mission = getCoverageActiveMission();
   const panel = document.getElementById('search-results-panel');
+  const activeView = document.querySelector('.view.active')?.id || '';
   if (!panel || !mission || !Array.isArray(tempSearchResults)) return;
+  if (!['planner-view', 'coverage-view'].includes(activeView)) return;
+  if (panel.style.display === 'none') return;
   let box = document.getElementById('coverage-post-scraping');
   if (!box) {
     box = document.createElement('div');
@@ -2072,7 +2075,9 @@ function installCoverageSearchResultHooks() {
     const originalCards = renderSearchCards;
     renderSearchCards = function(...args) {
       const out = originalCards.apply(this, args);
-      setTimeout(renderCoveragePostScrapingPanel, 0);
+      if (getCoverageActiveMission() && document.getElementById('planner-view')?.classList.contains('active')) {
+        setTimeout(renderCoveragePostScrapingPanel, 0);
+      }
       return out;
     };
     renderSearchCards._coverageWrapped = true;
@@ -2081,7 +2086,9 @@ function installCoverageSearchResultHooks() {
     const originalShowResults = showResultsPanel;
     showResultsPanel = function(...args) {
       const out = originalShowResults.apply(this, args);
-      setTimeout(renderCoveragePostScrapingPanel, 0);
+      if (getCoverageActiveMission() && document.getElementById('planner-view')?.classList.contains('active')) {
+        setTimeout(renderCoveragePostScrapingPanel, 0);
+      }
       return out;
     };
     showResultsPanel._coverageWrapped = true;
@@ -2195,7 +2202,10 @@ function bootCoverageModule() {
     const originalShowView = showView;
     showView = function(...args) {
       const out = originalShowView.apply(this, args);
-      setTimeout(renderCoverageFlowBar, 0);
+      const targetView = String(args[0] || '');
+      if (targetView === 'coverage' || targetView === 'planner' || targetView === 'leads') {
+        setTimeout(renderCoverageFlowBar, 0);
+      }
       return out;
     };
     showView._coverageFlowWrapped = true;

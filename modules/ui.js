@@ -1112,7 +1112,7 @@ function refreshDataDependentViews(options = {}) {
   if (typeof renderAll === 'function') renderAll();
   if (refreshDashboard && typeof queueDashboardProgressiveRender === 'function' && typeof isViewActive === 'function' && isViewActive('dashboard')) {
     queueDashboardProgressiveRender(options.reason || 'data-refresh');
-  } else if (refreshDashboard && typeof renderDashboardCharts === 'function' && (!('isViewActive' in window) || isViewActive('dashboard'))) {
+  } else if (refreshDashboard && typeof renderDashboardCharts === 'function' && typeof queueDashboardProgressiveRender !== 'function' && (!('isViewActive' in window) || isViewActive('dashboard'))) {
     renderDashboardCharts();
   }
   if (typeof renderTracking === 'function' && (!('isViewActive' in window) || isViewActive('tracking'))) renderTracking();

@@ -1117,8 +1117,12 @@ function clearAllLeads() {
   if (typeof markIntentionalEmptyLeads === 'function') markIntentionalEmptyLeads();
   leads = [];
   saveLeads();
-  renderAll();
-  renderDashboardCharts();
+  if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('clear-all-leads');
+  if (typeof refreshDataDependentViews === 'function') refreshDataDependentViews({ reason: 'clear-all-leads' });
+  else {
+    renderAll();
+    renderDashboardCharts();
+  }
   showToast('Todos los leads eliminados');
 }
 

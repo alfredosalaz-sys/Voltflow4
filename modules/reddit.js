@@ -174,8 +174,12 @@ function saveRedditLead(index) {
   if (typeof leads !== 'undefined') {
     leads.unshift(lead);
     if (typeof saveLeads === 'function') saveLeads();
-    if (typeof renderAll === 'function') renderAll();
-    if (typeof renderDashboardCharts === 'function') renderDashboardCharts();
+    if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('reddit-import');
+    if (typeof refreshDataDependentViews === 'function') refreshDataDependentViews({ reason: 'reddit-import' });
+    else {
+      if (typeof renderAll === 'function') renderAll();
+      if (typeof renderDashboardCharts === 'function') renderDashboardCharts();
+    }
     if (typeof updateStreakData === 'function') updateStreakData();
   }
   if (typeof showToast === 'function') {

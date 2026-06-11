@@ -1020,6 +1020,10 @@ function showView(view) {
         results: Array.isArray(window.tempSearchResults) ? window.tempSearchResults.length : 0
       })
     : null;
+  if (window.GORDI_SAFE_MODE && ['coverage', 'inbox', 'map', 'import'].includes(view)) {
+    if (typeof showToast === 'function') showToast(`${view} no disponible en modo seguro`);
+    view = 'dashboard';
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const target = document.getElementById(`${view}-view`);
   if (!target) {

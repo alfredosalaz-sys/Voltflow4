@@ -310,7 +310,15 @@ async function loadFromSheets() {
     });
     if (confirm(`Importar ${imported.length} leads desde Google Sheets? (reemplazará los datos locales)`)) {
       leads = imported;
-      saveLeads(); renderLeads(); renderKanban(); renderDashboardCharts(); updateStats();
+      saveLeads();
+      if (typeof markDashboardAggregatesDirty === 'function') markDashboardAggregatesDirty('google-sheets-import');
+      if (typeof refreshDataDependentViews === 'function') refreshDataDependentViews({ reason: 'google-sheets-import' });
+      else {
+        renderLeads();
+        renderKanban();
+        renderDashboardCharts();
+        updateStats();
+      }
       showToast(`☁️ ${imported.length} leads importados desde Sheets ✓`);
     }
   } catch(err) {

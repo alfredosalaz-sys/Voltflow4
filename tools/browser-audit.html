@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser Audit</title>
+</head>
+<body>
+  <pre id="out">running...</pre>
+  <iframe id="app-frame" src="/app.html" style="width:1280px;height:900px;border:0"></iframe>
+  <script>
+    (async function runAudit() {
+      const out = document.getElementById('out');
+      const frame = document.getElementById('app-frame');
+
+      function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+
+      function summarizeWindow(win) {
+        const activeView = win.document.querySelector('.view.active')?.id || null;
+        const navItems = [...win.document.querySelectorAll('[data-view]')].map(el => el.getAttribute('data-view'));
+        return {
+          bootReady: !!win.__gordiBootReady,
+          safeMode: !!win.GORDI_SAFE_MODE,
+          activeView,
+          hasModuleLoader: typeof win.ensureGordiModule === 'function',
+          hasPerfDiag: typeof win.showPerformanceDiagnostics === 'function',
+          leadsCount: Array.isArray(win.leads) ? win.leads.length : null,
+          navItems
+        };
+      }
+
+      async function runRouteChecks(win) {
+        const checks = [];
+        const routes = ['dashboard', 'leads', 'planner', 'kanban', 'settings'];
+        for (const route of routes) {
+          try {
+            if (typeof win.showView === 'function') win.showView(route);
+            await delay(60);
+            checks.push({
+              route,
+              active: win.document.querySelector('.view.active')?.id === `${route}-view`
+            });
+          } catch (error) {
+            checks.push({ route, error: String(error && error.message || error) });
+          }
+        }
+        return checks;
+      }
+
+      async function auditFrame(frameEl) {
+        await new Promise((resolve, reject) => {
+          frameEl.onload = () => resolve();
+          frameEl.onerror = reject;
+        });
+        await delay(2500);
+        const win = frameEl.contentWindow;
+        const result = summarizeWindow(win);
+        result.routeChecks = await runRouteChecks(win);
+        result.integrityModalVisible = !!win.document.getElementById('integrity-modal');
+        result.safeModeButtons = [...win.document.querySelectorAll('[onclick*="setGordiSafeMode"]')].length;
+        return result;
+      }
+
+      try {
+        const normal = await auditFrame(frame);
+        const safeFrame = document.createElement('iframe');
+        safeFrame.src = '/app.html?safe=1';
+        safeFrame.style.cssText = 'width:1280px;height:900px;border:0';
+        document.body.appendChild(safeFrame);
+        const safe = await auditFrame(safeFrame);
+        out.textContent = JSON.stringify({ normal, safe }, null, 2);
+      } catch (error) {
+        out.textContent = JSON.stringify({ error: String(error && error.message || error) }, null, 2);
+      }
+    })();
+  </script>
+</body>
+</html>

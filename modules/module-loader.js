@@ -16,6 +16,15 @@
   };
   const loading = {};
   const stubs = {};
+  const safeModeBlockedModules = new Set(['chat', 'help', 'diskBackup', 'coverage', 'workflow', 'aiEmail', 'inbox', 'smartImport']);
+
+  function isSafeModeBlocked(name) {
+    return !!window.GORDI_SAFE_MODE && safeModeBlockedModules.has(name);
+  }
+
+  function notifySafeModeBlock(name) {
+    if (typeof showToast === 'function') showToast(`${name} no disponible en modo seguro`);
+  }
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -43,6 +52,10 @@
   function ensureGordiModule(name) {
     const item = registry[name];
     if (!item) return Promise.reject(new Error(`Modulo desconocido: ${name}`));
+    if (isSafeModeBlocked(name)) {
+      notifySafeModeBlock(name);
+      return Promise.resolve(null);
+    }
     if (!loading[name]) {
       const deps = Array.isArray(item.deps) ? item.deps : [];
       loading[name] = Promise.all(deps.map(ensureGordiModule))
@@ -247,6 +260,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    if (window.GORDI_SAFE_MODE) return;
     if (localStorage.getItem('gordi_disk_backup_enabled') === 'true') {
       idle(() => ensureGordiModule('diskBackup'), 30000, 60000);
     }

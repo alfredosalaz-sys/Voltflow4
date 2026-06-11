@@ -2580,16 +2580,17 @@ Y cruzará los remitentes con tus leads para actualizar el CRM."
 <script defer src="modules/ui.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/ai-router.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script defer src="modules/misc.js?v=2026.06.04.0320" charset="UTF-8"></script>
+<script defer src="modules/module-loader.js?v=2026.06.04.0320" charset="UTF-8"></script>
 <script>
   (function loadOptionalRuntimeModules() {
-    if (window.GORDI_SAFE_MODE) return;
     var build = window.GORDI_APP_BUILD || Date.now();
-    [
+    var optional = [
       'modules/tour-registry.js?v=' + build,
       'modules/flow-events.js?v=' + build,
-      'modules/visual-system.js?v=' + build,
-      'modules/module-loader.js?v=' + build
-    ].forEach(function(src) {
+      'modules/visual-system.js?v=' + build
+    ];
+    if (window.GORDI_SAFE_MODE) return;
+    optional.forEach(function(src) {
       var script = document.createElement('script');
       script.src = src;
       script.charset = 'UTF-8';

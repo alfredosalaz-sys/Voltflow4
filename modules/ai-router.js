@@ -202,6 +202,7 @@ function applySequenceRule(lead, newStatus) {
   }
   addActivityLog(lead.id, `📅 Seguimiento auto-programado: ${d.toLocaleDateString('es-ES',{day:'2-digit',month:'long'})}`);
   updateFollowupBadge();
+  return true;
 }
 
 // ── MEJORA 4: Google Sheets Sync ──────────────────────────────────────────────
@@ -670,10 +671,20 @@ function renderDrawer() {
   }, 50);
 }
 
-function saveDrawerLead(id) {
+function saveDrawerLead(id, options = {}) {
   const lead = leads.find(l => l.id == id);
-  if (!lead) return;
+  if (!lead) return false;
   const oldStatus = lead.status;
+  const before = JSON.stringify({
+    email: lead.email || '',
+    phone: lead.phone || '',
+    whatsapp: lead.whatsapp || '',
+    status: lead.status || '',
+    website: lead.website || '',
+    notes: lead.notes || '',
+    next_contact: lead.next_contact || '',
+    budget: Number(lead.budget || 0)
+  });
   lead.email = document.getElementById('drawer-email')?.value.trim() || lead.email;
   lead.phone = document.getElementById('drawer-phone')?.value.trim() || lead.phone;
   const dwWa = document.getElementById('drawer-whatsapp');
@@ -683,15 +694,28 @@ function saveDrawerLead(id) {
   lead.notes = document.getElementById('drawer-notes')?.value.trim() || '';
   lead.next_contact = document.getElementById('drawer-next-contact')?.value || '';
   lead.budget = parseFloat(document.getElementById('drawer-budget')?.value) || 0;
+  const after = JSON.stringify({
+    email: lead.email || '',
+    phone: lead.phone || '',
+    whatsapp: lead.whatsapp || '',
+    status: lead.status || '',
+    website: lead.website || '',
+    notes: lead.notes || '',
+    next_contact: lead.next_contact || '',
+    budget: Number(lead.budget || 0)
+  });
+  if (before === after) return false;
   if (lead.status !== oldStatus) {
     lead.status_date = new Date().toISOString();
     addActivityLog(id, `Estado cambiado: ${oldStatus} -> ${lead.status}`);
     applySequenceRule(lead, lead.status); // MEJORA 2
   }
   lead.score = recalculateLeadScore(lead);
-  saveLeads(); renderAll();
-  showToast('Lead guardado ✓');
+  saveLeads();
+  if (options.refresh !== false) renderAll();
+  if (!options.silent) showToast('Lead guardado ✓');
   updateFollowupBadge();
+  return true;
 }
 
 function drawerNav(dir) {
@@ -699,17 +723,18 @@ function drawerNav(dir) {
   const newIdx = idx + dir;
   if (newIdx < 0 || newIdx >= drawerFilteredIds.length) return;
   // Auto-save before navigating
-  saveDrawerLead(drawerLeadId);
+  saveDrawerLead(drawerLeadId, { silent: true, refresh: false });
   drawerLeadId = drawerFilteredIds[newIdx];
   renderDrawer();
 }
 
 function closeDrawer() {
   // Auto-save on close
-  if (drawerLeadId) saveDrawerLead(drawerLeadId);
+  const changed = drawerLeadId ? saveDrawerLead(drawerLeadId, { silent: true, refresh: false }) : false;
   document.getElementById('lead-drawer').classList.remove('open');
   document.getElementById('drawer-backdrop').style.display = 'none';
   drawerLeadId = null;
+  if (changed) requestAnimationFrame(() => renderAll());
 }
 
 // Override openLeadDetail to use drawer instead of modal

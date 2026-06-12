@@ -218,9 +218,17 @@
 
   if (typeof window.buildEmailThread !== 'function') {
     window.buildEmailThread = function (emails) {
-      ensureGordiModule('inbox');
       const count = Array.isArray(emails) ? emails.length : 0;
-      return `<div style="font-size:.75rem;color:var(--text-dim);padding:.4rem 0">${count ? `${count} emails registrados` : 'Sin emails registrados aun'}</div>`;
+      if (!count) {
+        return '<div style="font-size:.75rem;color:var(--text-dim);padding:.4rem 0">Sin emails registrados aun</div>';
+      }
+      const shown = emails.slice(0, 3).map(email => {
+        const subject = String(email?.subject || '(sin asunto)').replace(/[<>&"]/g, ch => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[ch]));
+        const date = email?.date ? new Date(email.date).toLocaleDateString('es-ES') : '';
+        return `<div style="font-size:.72rem;padding:.3rem .5rem;background:var(--glass);border-radius:5px;margin-bottom:3px"><strong>${subject}</strong>${date ? ` - ${date}` : ''}</div>`;
+      }).join('');
+      const more = count > 3 ? `<div style="font-size:.7rem;color:var(--text-dim);padding:.25rem 0">+${count - 3} emails mas</div>` : '';
+      return shown + more;
     };
   }
 

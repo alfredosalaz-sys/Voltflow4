@@ -1074,7 +1074,10 @@ function markNotInterested(id) {
     lead.status = 'No interesa';
     lead.status_date = new Date().toISOString();
     addActivityLog(id, 'Marcado como No interesa');
-    saveLeads(); closeLead(); renderAll();
+    saveLeads();
+    if (typeof drawerLeadId !== 'undefined' && drawerLeadId) closeDrawer();
+    else closeLead();
+    renderAll();
     showToast('Lead marcado como No interesa');
   });
 }

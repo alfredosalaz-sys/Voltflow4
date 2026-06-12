@@ -614,6 +614,7 @@ function renderRecentActivity() {
 
 // ============ KANBAN ============
 function renderKanban() {
+  const maxCardsPerColumn = 80;
   const cols = ['Pendiente','Contactado','Respuesta del cliente','Visita','Entrega de presupuesto','Cerrado'];
   cols.forEach(status => {
     const container = document.getElementById(`cards-${status}`);
@@ -671,8 +672,9 @@ function renderKanban() {
 
     const today = new Date(); today.setHours(0,0,0,0);
 
+    const visibleItems = items.slice(0, maxCardsPerColumn);
     container.innerHTML = items.length
-      ? items.map(l => {
+      ? visibleItems.map(l => {
           const daysInStatus = l.status_date ? Math.floor((Date.now() - new Date(l.status_date)) / 86400000) : 0;
           const daysBadge = daysInStatus >= 7 ? `<span style="font-size:.6rem;background:rgba(239,68,68,.2);color:#ef4444;padding:1px 5px;border-radius:4px;margin-left:3px">${daysInStatus}d</span>` :
                             daysInStatus >= 3 ? `<span style="font-size:.6rem;background:rgba(245,158,11,.15);color:#f59e0b;padding:1px 5px;border-radius:4px;margin-left:3px">${daysInStatus}d</span>` : '';
@@ -706,7 +708,9 @@ function renderKanban() {
               </div>
             </div>
           </div>`;
-        }).join('')
+        }).join('') + (items.length > visibleItems.length
+          ? `<div style="text-align:center;padding:.8rem;color:var(--text-dim);font-size:.72rem">+${items.length - visibleItems.length} leads mas. Usa filtros para afinar.</div>`
+          : '')
       : `<div style="text-align:center;padding:1.5rem;color:var(--text-dim);font-size:.78rem">Arrastra aquí</div>`;
   });
 

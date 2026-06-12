@@ -510,7 +510,7 @@
     <div id="leads-sf-bar" class="sf-bar" data-tour-id="leads-filters-feature" data-tour-view="leads" data-tour-contexts="update,leads" data-tour-title="Leads para trabajar rápido" data-tour-text="Búsqueda, orden, filtros y acciones masivas están pensados para operar sin fricción. La mejora UX aquí es velocidad: ver menos ruido y actuar más rápido sobre los contactos correctos." data-tour-manual="leads" data-tour-priority="100">
       <div class="sf-search-wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="lead-search" placeholder="Buscar empresa, email, notas, sector..." oninput="renderLeads(); sfUpdateChips('leads')">
+        <input type="text" id="lead-search" placeholder="Buscar empresa, email, notas, sector..." oninput="gordiDebouncedRender('leads')">
       </div>
       <div class="sf-sort-wrap">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
@@ -637,7 +637,7 @@
     <div class="sf-bar">
       <div class="sf-search-wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="kanban-search" placeholder="Buscar empresa, nombre..." oninput="renderKanban(); sfUpdateChips('kanban')">
+        <input type="text" id="kanban-search" placeholder="Buscar empresa, nombre..." oninput="gordiDebouncedRender('kanban')">
       </div>
       <div class="sf-sort-wrap">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
@@ -2519,6 +2519,21 @@ Y cruzará los remitentes con tus leads para actualizar el CRM."
      v2.8.2 (Production Ready)
 ------------------------------------------------------- -->
 <script>
+  window.gordiDebouncedRender = (function() {
+    var timers = {};
+    return function(view) {
+      clearTimeout(timers[view]);
+      timers[view] = setTimeout(function() {
+        if (view === 'leads') {
+          if (typeof renderLeads === 'function') renderLeads();
+          if (typeof sfUpdateChips === 'function') sfUpdateChips('leads');
+        } else if (view === 'kanban') {
+          if (typeof renderKanban === 'function') renderKanban();
+          if (typeof sfUpdateChips === 'function') sfUpdateChips('kanban');
+        }
+      }, 180);
+    };
+  })();
   (function installBootWatchdog() {
     var bootErrors = [];
     function esc(value) {
